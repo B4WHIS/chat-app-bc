@@ -39,3 +39,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Bỏ qua tất cả file Word
+*.docx
+
+# Bỏ qua file môi trường
+.env
+
+*.md
