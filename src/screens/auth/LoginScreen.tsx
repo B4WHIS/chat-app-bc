@@ -135,8 +135,8 @@ const styles = StyleSheet.create({
   highlightText: { color: "#1F2937" },
   subTitle: { fontSize: 15, color: "#525762", marginTop: 6 },
   heroImage: {
-    width: 300,
-    height: 300,
+    width: 400,
+    height: 250,
     // borderWidth: 1,
     borderRadius: 150,
     // backgroundColor: "#D8F3DC",
