@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 import LoginScreen from "./src/screens/auth/LoginScreen";
 import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import RootNavigator from "./src/navigation/RootNavigator";
+import AppButton from "./src/components/AppButton";
+import React from "react";
 
 export default function App() {
   return <RootNavigator />;

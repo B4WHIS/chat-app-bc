@@ -10,6 +10,8 @@ import {
   Alert,
 } from "react-native";
 import { signInWithEmail } from "../../services/authService";
+import AppButton from "../../components/AppButton";
+import AppTextInput from "../../components/AppTextInput";
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");
@@ -31,23 +33,26 @@ const LoginScreen = ({ navigation }: any) => {
     >
       <View style={styles.container}>
         <Text style={styles.title}>ĐĂNG NHẬP</Text>
-        <TextInput
+
+        <AppTextInput
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
-          style={styles.input}
+          keyboardType="email-address"
+          iconName="email"
         />
-        <TextInput
+
+        <AppTextInput
           placeholder="Password"
           value={pass}
           onChangeText={setPass}
           secureTextEntry
-          style={styles.input}
+          iconName="lock"
         />
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text>ĐĂNG NHẬP</Text>
-        </TouchableOpacity>
+
+        <AppButton title="Đăng nhập" onPress={handleLogin} />
+
         <TouchableOpacity onPress={() => navigation.navigate("Register")}>
           <Text>Chưa có tài khoản? Đăng ký ngay</Text>
         </TouchableOpacity>
@@ -61,7 +66,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: 20,
-    // borderWidth: 1,
+    //borderWidth: 1,
   },
   title: {
     fontWeight: "bold",

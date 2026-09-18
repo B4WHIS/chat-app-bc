@@ -10,6 +10,8 @@ import {
   Alert,
 } from "react-native";
 import { signUpWithEmail } from "../../services/authService";
+import AppTextInput from "../../components/AppTextInput";
+import AppButton from "../../components/AppButton";
 
 const RegisterScreen = ({ navigation }: any) => {
   const [displayName, setDisplayName] = useState("");
@@ -41,37 +43,37 @@ const RegisterScreen = ({ navigation }: any) => {
     >
       <View style={styles.container}>
         <Text style={styles.title}>ĐĂNG KÝ</Text>
-        <TextInput
+        <AppTextInput
+          iconName="person"
           placeholder="Username"
           value={displayName}
           onChangeText={setDisplayName}
           autoCapitalize="none"
-          style={styles.input}
         />
-        <TextInput
+
+        <AppTextInput
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
-          style={styles.input}
+          keyboardType="email-address"
+          iconName="email"
         />
-        <TextInput
+        <AppTextInput
+          iconName="lock"
           placeholder="Password"
           value={pass}
           onChangeText={setPass}
           secureTextEntry
-          style={styles.input}
         />
-        <TextInput
+        <AppTextInput
+          iconName="lock-outline"
           placeholder="Confirm Password"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
-          style={styles.input}
         />
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text>ĐĂNG KÝ</Text>
-        </TouchableOpacity>
+        <AppButton title="Đăng kí" onPress={handleRegister} />
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text>Đã có tài khoản? Đăng nhập ngay</Text>
         </TouchableOpacity>
