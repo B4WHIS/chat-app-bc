@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { signInWithEmail } from "../../services/authService";
 
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
 
@@ -48,7 +48,7 @@ const LoginScreen = () => {
         <TouchableOpacity style={styles.button} onPress={handleLogin}>
           <Text>ĐĂNG NHẬP</Text>
         </TouchableOpacity>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
           <Text>Chưa có tài khoản? Đăng ký ngay</Text>
         </TouchableOpacity>
       </View>
