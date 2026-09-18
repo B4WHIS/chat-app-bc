@@ -7,11 +7,22 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
+import { signInWithEmail } from "../../services/authService";
 
 const LoginScreen = () => {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+
+  const handleLogin = async () => {
+    try {
+      await signInWithEmail(email, pass);
+      Alert.alert("Thành công", "Đăng nhập thành công");
+    } catch (error: any) {
+      Alert.alert("Lỗi", error.message);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -34,7 +45,7 @@ const LoginScreen = () => {
           secureTextEntry
           style={styles.input}
         />
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity style={styles.button} onPress={handleLogin}>
           <Text>ĐĂNG NHẬP</Text>
         </TouchableOpacity>
         <TouchableOpacity>

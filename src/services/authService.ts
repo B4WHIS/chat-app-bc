@@ -42,7 +42,7 @@ export const signUpWithEmail = async (
     if (error.code === "auth/weak-password") {
       throw new Error("Mật khẩu quá yếu (tối thiểu 6 ký tự).");
     }
-    throw new Error("Đăng ký thất bại. Vui lòng thử lại!");
+    throw new Error(`Đăng ký thất bại: ${error.code || error.message}`);
   }
 };
 

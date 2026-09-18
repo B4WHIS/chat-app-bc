@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
+import { signUpWithEmail } from "../../services/authService";
 
 const RegisterScreen = () => {
   const [displayName, setDisplayName] = useState("");
@@ -16,7 +17,7 @@ const RegisterScreen = () => {
   const [pass, setPass] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!email || !pass || !displayName) {
       Alert.alert("Thông báo", "Email và Password không được để trống");
       return;
@@ -24,6 +25,12 @@ const RegisterScreen = () => {
     if (pass != confirmPassword) {
       Alert.alert("Thông báo", "Password không trùng khớp");
       return;
+    }
+    try {
+      await signUpWithEmail(email, pass, displayName);
+      Alert.alert("Thành công", "Đăng ký tài khoản thành công");
+    } catch (error: any) {
+      Alert.alert("Lỗi", error.message);
     }
   };
 
