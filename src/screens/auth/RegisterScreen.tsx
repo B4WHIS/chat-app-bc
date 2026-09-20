@@ -9,10 +9,12 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  ScrollView,
 } from "react-native";
 import { signUpWithEmail } from "../../services/authService";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import AppButton from "../../components/AppButton";
 
 const RegisterScreen = ({ navigation }: any) => {
   const [displayName, setDisplayName] = useState("");
@@ -42,100 +44,104 @@ const RegisterScreen = ({ navigation }: any) => {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={styles.container}>
-        <LinearGradient
-          colors={["#bae68a", "#FFFFFF"]}
-          style={styles.gradientBg}
-        />
-        {/* Text giới thiêu */}
-        <Text style={styles.titleText}>
-          Tạo tài khoản
-          <Text style={styles.highlightText}> của bạn</Text>
-        </Text>
-        <Text style={styles.subTitle}>Tạo tài của bạn để bắt đầu</Text>
-        <Image
-          source={require("../../../assets/images/Register.png")}
-          style={styles.heroImage}
-          resizeMode="contain"
-        />
-
-        {/* Displayname */}
-        <View style={styles.inputContainer}>
-          <Ionicons name="person-outline" size={20} color="#9CA3AF" />
-          <TextInput
-            placeholder="Tên hiển thị"
-            value={displayName}
-            onChangeText={setDisplayName}
-            autoCapitalize="none"
-            style={styles.inputField}
+      <ScrollView
+      // showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.container}>
+          <LinearGradient
+            colors={["#bae68a", "#FFFFFF"]}
+            style={styles.gradientBg}
           />
-        </View>
-        {/* Email */}
-        <View style={styles.inputContainer}>
-          <Ionicons name="mail-outline" size={20} color="#9CA3AF" />
-          <TextInput
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            style={styles.inputField}
-          />
-        </View>
-
-        {/* password */}
-        <View style={styles.inputContainer}>
-          <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
-          <TextInput
-            placeholder="Mật khẩu"
-            value={pass}
-            onChangeText={setPass}
-            secureTextEntry={!showPass}
-            style={styles.inputField}
-          />
-          <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-            <Ionicons
-              name={showPass ? "eye-outline" : "eye-off-outline"}
-              size={20}
-              color="#9CA3AF"
-            />
-          </TouchableOpacity>
-        </View>
-        {/* confirm pass */}
-        <View style={styles.inputContainer}>
-          <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
-          <TextInput
-            placeholder="Nhập lại mật khẩu"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry={!showPass}
-            style={styles.inputField}
-          />
-          <TouchableOpacity onPress={() => setShowPass(!showPass)}>
-            <Ionicons
-              name={showPass ? "eye-outline" : "eye-off-outline"}
-              size={20}
-              color="#9CA3AF"
-            />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text style={{ fontWeight: "bold", fontSize: 16 }}>ĐĂNG KÝ</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text
-            style={{
-              fontStyle: "italic",
-              justifyContent: "center",
-              alignSelf: "center",
-              marginTop: 20,
-            }}
-          >
-            Đã có tài khoản?
-            <Text style={{ color: "#779854" }}> Đăng nhập ngay</Text>
+          {/* Text giới thiêu */}
+          <Text style={styles.titleText}>
+            Tạo tài khoản
+            <Text style={styles.highlightText}> của bạn</Text>
           </Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.subTitle}>Tạo tài của bạn để bắt đầu</Text>
+          <Image
+            source={require("../../../assets/images/Register.png")}
+            style={styles.heroImage}
+            resizeMode="contain"
+          />
+
+          {/* Displayname */}
+          <View style={styles.inputContainer}>
+            <Ionicons name="person-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              placeholder="Tên hiển thị"
+              value={displayName}
+              onChangeText={setDisplayName}
+              autoCapitalize="none"
+              style={styles.inputField}
+            />
+          </View>
+          {/* Email */}
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              style={styles.inputField}
+            />
+          </View>
+
+          {/* password */}
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              placeholder="Mật khẩu"
+              value={pass}
+              onChangeText={setPass}
+              secureTextEntry={!showPass}
+              style={styles.inputField}
+            />
+            <TouchableOpacity onPress={() => setShowPass(!showPass)}>
+              <Ionicons
+                name={showPass ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color="#9CA3AF"
+              />
+            </TouchableOpacity>
+          </View>
+          {/* confirm pass */}
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showPass}
+              style={styles.inputField}
+            />
+            <TouchableOpacity onPress={() => setShowPass(!showPass)}>
+              <Ionicons
+                name={showPass ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color="#9CA3AF"
+              />
+            </TouchableOpacity>
+          </View>
+
+          <AppButton title="ĐĂNG KÝ" onPress={handleRegister} />
+          
+
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text
+              style={{
+                fontStyle: "italic",
+                justifyContent: "center",
+                alignSelf: "center",
+                marginTop: 20,
+              }}
+            >
+              Đã có tài khoản?
+              <Text style={{ color: "#779854" }}> Đăng nhập ngay</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 };

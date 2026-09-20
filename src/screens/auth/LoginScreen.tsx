@@ -13,6 +13,7 @@ import {
 import { signInWithEmail } from "../../services/authService";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import AppButton from "../../components/AppButton";
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");
@@ -89,9 +90,8 @@ const LoginScreen = ({ navigation }: any) => {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={{ fontWeight: "bold", fontSize: 16 }}>ĐĂNG NHẬP</Text>
-        </TouchableOpacity>
+        <AppButton title="ĐĂNG NHẬP" onPress={handleLogin} />
+
         <TouchableOpacity onPress={() => navigation.navigate("Register")}>
           <Text
             style={{

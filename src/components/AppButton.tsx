@@ -23,7 +23,7 @@ const AppButton: React.FC<AppButtonProps> = ({ title, onPress }) => {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: "#d9fdc1",
+    backgroundColor: "#bae68a",
     borderColor: "#000000",
     borderWidth: 1,
     alignItems: "center",
@@ -33,6 +33,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     marginBottom: 5,
     padding: 10,
+    justifyContent: "center",
   },
   buttonPressed: {
     backgroundColor: "#3e5e29",
@@ -40,8 +41,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#000000",
-    fontSize: 16,
-    fontFamily: "Sans-Serif",
+    fontSize: 18,
     fontWeight: "bold",
   },
 
