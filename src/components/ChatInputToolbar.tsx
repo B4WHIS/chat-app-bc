@@ -7,6 +7,7 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AppButton from "./AppButton";
 
 export interface ChatInputToolbarProps {
   value?: string;
@@ -52,7 +53,7 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
 
   return (
     <View style={styles.container}>
-     
+      {/* Nút chọn ảnh */}
       <TouchableOpacity
         style={styles.actionButton}
         onPress={onPickImage}
@@ -63,6 +64,7 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
         <Ionicons name="images-outline" size={24} color="#2D6A4F" />
       </TouchableOpacity>
 
+      {/* Ô nhập tin nhắn */}
       <View style={styles.inputWrapper}>
         <TextInput
           style={styles.textInput}
@@ -76,20 +78,22 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
         />
       </View>
 
-    
-      <TouchableOpacity
-        style={[styles.sendButton, canSend ? styles.sendButtonActive : styles.sendButtonDisabled]}
+      {/* Nút gửi tin nhắn AppButton chuẩn theme app */}
+      <AppButton
+        title="Gửi"
+        icon={
+          <Ionicons
+            name="send"
+            size={14}
+            color={canSend ? "#FFFFFF" : "#6B7280"}
+            style={styles.sendIcon}
+          />
+        }
         onPress={handleSend}
         disabled={!canSend}
-        activeOpacity={0.8}
-        accessibilityLabel="Gửi tin nhắn"
-      >
-        <Ionicons
-          name="send"
-          size={18}
-          color={canSend ? "#FFFFFF" : "#9CA3AF"}
-        />
-      </TouchableOpacity>
+        style={styles.sendAppButton}
+        titleStyle={styles.sendAppButtonText}
+      />
     </View>
   );
 };
@@ -131,20 +135,27 @@ const styles = StyleSheet.create({
     padding: 0,
     margin: 0,
   },
-  sendButton: {
-    width: 40,
+  sendAppButton: {
     height: 40,
+    minWidth: 68,
     borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
+    marginVertical: 0,
     marginLeft: 8,
     marginBottom: 2,
+    shadowColor: "#2D6A4F",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    paddingHorizontal: 6,
   },
-  sendButtonActive: {
-    backgroundColor: "#2D6A4F",
+  sendAppButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
-  sendButtonDisabled: {
-    backgroundColor: "#E5E7EB",
+  sendIcon: {
+    marginRight: 4,
   },
 });
 
