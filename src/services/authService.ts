@@ -4,83 +4,126 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  signOut,
 } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
 import { IUser } from "../types";
 
 export const signUpWithEmail = async (
   email: string,
   password: string,
-  displayname: string,
-) => {
+  displayName: string
+): Promise<IUser> => {
   try {
-    //Tao tai khoan tren auth
+    // Tao tai khoan tren auth
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email,
-      password,
+      password
     );
     const user = userCredential.user;
 
     // Cap nhat displayName tren Firebase Auth
-    await updateProfile(user, { displayName: displayname });
+    await updateProfile(user, { displayName });
 
-    //Tao doi tuong theo interface
+    // Tao doi tuong theo interface
     const newUser: IUser = {
       id: user.uid,
       email: email.toLowerCase(),
-      displayName: displayname,
+      displayName: displayName,
       isOnline: true,
       createdAt: new Date().toISOString(),
     };
 
-    // ghi vao firestore
+    // Ghi vao firestore
     await setDoc(doc(db, "users", user.uid), newUser);
     return newUser;
-  } catch (error: any) {
-    if (error.code === "auth/email-already-in-use") {
-      throw new Error("Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác.");
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    if (err.code === "auth/email-already-in-use") {
+      throw new Error(
+        "Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác."
+      );
     }
-    if (error.code === "auth/invalid-email") {
+    if (err.code === "auth/invalid-email") {
       throw new Error("Định dạng email không hợp lệ.");
     }
-    if (error.code === "auth/weak-password") {
+    if (err.code === "auth/weak-password") {
       throw new Error("Mật khẩu quá yếu (tối thiểu 6 ký tự).");
     }
-    throw new Error(`Đăng ký thất bại: ${error.code || error.message}`);
+    throw new Error(`Đăng ký thất bại: ${err.code || err.message}`);
   }
 };
 
-export const signInWithEmail = async (email: string, password: string) => {
+export const signInWithEmail = async (
+  email: string,
+  password: string
+): Promise<void> => {
   try {
-    await signInWithEmailAndPassword(auth, email, password);
-  } catch (error: any) {
-    if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password") {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    if (userCredential.user?.uid) {
+      await updateDoc(doc(db, "users", userCredential.user.uid), {
+        isOnline: true,
+      }).catch(() => {
+        // Khong chan login neu firestore update chua kip
+      });
+    }
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    if (
+      err.code === "auth/invalid-credential" ||
+      err.code === "auth/wrong-password"
+    ) {
       throw new Error("Email hoặc mật khẩu không chính xác.");
     }
-    if (error.code === "auth/user-not-found") {
-      throw new Error("Tài khoản không tồn tại. Vui lòng đăng ký tài khoản mới.");
+    if (err.code === "auth/user-not-found") {
+      throw new Error(
+        "Tài khoản không tồn tại. Vui lòng đăng ký tài khoản mới."
+      );
     }
-    if (error.code === "auth/invalid-email") {
+    if (err.code === "auth/invalid-email") {
       throw new Error("Định dạng email không hợp lệ.");
     }
-    if (error.code === "auth/too-many-requests") {
-      throw new Error("Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng đợi trong giây lát!");
+    if (err.code === "auth/too-many-requests") {
+      throw new Error(
+        "Bạn đã thử đăng nhập sai quá nhiều lần. Vui lòng đợi trong giây lát!"
+      );
     }
     throw new Error("Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin!");
   }
 };
 
-export const resetPassword = async (email: string) => {
+export const signOutUser = async (): Promise<void> => {
+  try {
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid) {
+      await updateDoc(doc(db, "users", currentUid), {
+        isOnline: false,
+        lastSeen: new Date().toISOString(),
+      }).catch(() => {
+        // Ignored neu loi ket noi
+      });
+    }
+    await signOut(auth);
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    throw new Error(`Đăng xuất thất bại: ${err.message || "Vui lòng thử lại!"}`);
+  }
+};
+
+export const resetPassword = async (email: string): Promise<void> => {
   try {
     await sendPasswordResetEmail(auth, email.trim());
-  } catch (error: any) {
-    if (error.code === "auth/user-not-found") {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    if (err.code === "auth/user-not-found") {
       throw new Error("Không tìm thấy tài khoản với email này.");
     }
-    if (error.code === "auth/invalid-email") {
+    if (err.code === "auth/invalid-email") {
       throw new Error("Định dạng email không hợp lệ.");
     }
-    throw new Error("Gửi yêu cầu đặt lại mật khẩu thất bại. Vui lòng thử lại!");
+    throw new Error(
+      "Gửi yêu cầu đặt lại mật khẩu thất bại. Vui lòng thử lại!"
+    );
   }
 };

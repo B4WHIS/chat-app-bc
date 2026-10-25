@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   TextInput,
+  TextInputInstance,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -26,12 +27,20 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { signUpWithEmail } from "../../services/authService";
+import { AuthStackParamList } from "../../types";
+
+type RegisterScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, "Register">;
+
+interface RegisterScreenProps {
+  navigation: RegisterScreenNavigationProp;
+}
 import AppButton from "../../components/AppButton";
 import AuthInputField from "../../components/AuthInputField";
 import LoadingOverlay from "../../components/LoadingOverlay";
 
-const RegisterScreen = ({ navigation }: any) => {
+const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -39,9 +48,9 @@ const RegisterScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(false);
 
   // References for keyboard auto-advance
-  const emailRef = useRef<TextInput>(null);
-  const passRef = useRef<TextInput>(null);
-  const confirmPassRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const passRef = useRef<TextInputInstance>(null);
+  const confirmPassRef = useRef<TextInputInstance>(null);
 
   // Floating animation for Hero illustration
   const floatAnim = useSharedValue(0);
@@ -87,9 +96,10 @@ const RegisterScreen = ({ navigation }: any) => {
     try {
       await signUpWithEmail(email.trim(), pass, displayName.trim());
       // Keep loading as true so button spinner continues smoothly until RootNavigator switches screens
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       setLoading(false);
-      Alert.alert("Đăng ký thất bại", error.message);
+      Alert.alert("Đăng ký thất bại", err.message || "Đã xảy ra lỗi");
     }
   };
 

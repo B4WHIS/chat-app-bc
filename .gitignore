@@ -47,3 +47,10 @@ yarn-error.*
 .env
 
 *.md
+
+# Agent & temporary tools
+.agent/
+.agents/
+.claude/
+temp_script.txt
+temp_*.txt

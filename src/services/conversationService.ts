@@ -138,14 +138,24 @@ export const subscribeConversations = (
           list.push({ id: docSnap.id, ...(docSnap.data() as any) });
         });
 
+        const getTimestampMillis = (val: any): number => {
+          if (!val) return 0;
+          if (typeof val === "number") return val;
+          if (val instanceof Date) return val.getTime();
+          if (typeof val === "string") return new Date(val).getTime() || 0;
+          if (typeof val === "object" && typeof val.toMillis === "function") {
+            return val.toMillis();
+          }
+          if (typeof val === "object" && typeof val.toDate === "function") {
+            return val.toDate().getTime();
+          }
+          return 0;
+        };
+
         // Sắp xếp theo updatedAt mới nhất lên đầu
         list.sort((a, b) => {
-          const timeA = a.updatedAt?.toMillis
-            ? a.updatedAt.toMillis()
-            : new Date(a.updatedAt || 0).getTime();
-          const timeB = b.updatedAt?.toMillis
-            ? b.updatedAt.toMillis()
-            : new Date(b.updatedAt || 0).getTime();
+          const timeA = getTimestampMillis(a.updatedAt);
+          const timeB = getTimestampMillis(b.updatedAt);
           return timeB - timeA;
         });
 

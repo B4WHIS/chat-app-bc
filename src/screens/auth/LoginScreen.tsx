@@ -15,6 +15,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   TextInput,
+  TextInputInstance,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,18 +30,26 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { signInWithEmail, resetPassword } from "../../services/authService";
+import { AuthStackParamList } from "../../types";
+
+type LoginScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, "Login">;
+
+interface LoginScreenProps {
+  navigation: LoginScreenNavigationProp;
+}
 import AppButton from "../../components/AppButton";
 import AuthInputField from "../../components/AuthInputField";
 import LoadingOverlay from "../../components/LoadingOverlay";
 
-const LoginScreen = ({ navigation }: any) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
 
   // References for keyboard auto-advance
-  const passInputRef = useRef<TextInput>(null);
+  const passInputRef = useRef<TextInputInstance>(null);
 
   // Forgot password modal state
   const [forgotModalVisible, setForgotModalVisible] = useState(false);
@@ -79,9 +88,10 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       await signInWithEmail(email.trim(), pass);
       // Keep loading as true so button spinner continues smoothly until RootNavigator switches screens
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       setLoading(false);
-      Alert.alert("Đăng nhập thất bại", error.message);
+      Alert.alert("Đăng nhập thất bại", err.message || "Đã xảy ra lỗi");
     }
   };
 
@@ -107,8 +117,9 @@ const LoginScreen = ({ navigation }: any) => {
       );
       setForgotModalVisible(false);
       setResetEmail("");
-    } catch (error: any) {
-      Alert.alert("Lỗi", error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      Alert.alert("Lỗi", err.message || "Đã xảy ra lỗi");
     } finally {
       setResetLoading(false);
     }

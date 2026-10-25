@@ -2,6 +2,7 @@ import React, { useState, useRef, useImperativeHandle, forwardRef } from "react"
 import {
   View,
   TextInput,
+  TextInputInstance,
   StyleSheet,
   TouchableOpacity,
   Text,
@@ -23,7 +24,7 @@ interface AuthInputFieldProps extends TextInputProps {
   rightElement?: React.ReactNode;
 }
 
-export const AuthInputField = forwardRef<TextInput, AuthInputFieldProps>(
+export const AuthInputField = forwardRef<TextInputInstance, AuthInputFieldProps>(
   (
     {
       icon,
@@ -40,19 +41,19 @@ export const AuthInputField = forwardRef<TextInput, AuthInputFieldProps>(
   ) => {
     const [isFocused, setIsFocused] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const innerInputRef = useRef<TextInput>(null);
+    const innerInputRef = useRef<TextInputInstance>(null);
 
-    useImperativeHandle(ref, () => innerInputRef.current as TextInput);
+    useImperativeHandle(ref, () => innerInputRef.current as TextInputInstance);
 
     const scale = useSharedValue(1);
 
-    const handleFocus = (e: any) => {
+    const handleFocus: NonNullable<TextInputProps["onFocus"]> = (e) => {
       setIsFocused(true);
       scale.value = withSpring(1.015, { damping: 14, stiffness: 220 });
       onFocus?.(e);
     };
 
-    const handleBlur = (e: any) => {
+    const handleBlur: NonNullable<TextInputProps["onBlur"]> = (e) => {
       setIsFocused(false);
       scale.value = withSpring(1, { damping: 14, stiffness: 220 });
       onBlur?.(e);

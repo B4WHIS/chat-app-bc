@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { signOut } from "firebase/auth";
+import { signOutUser } from "../../services/authService";
 
 import { Avatar } from "../../components/Avatar";
 import { auth } from "../../config/firebase";
@@ -43,7 +43,7 @@ export const SettingsScreen: React.FC = () => {
       {
         text: "Đăng xuất",
         style: "destructive",
-        onPress: () => signOut(auth),
+        onPress: () => signOutUser(),
       },
     ]);
   };

@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TextInput,
+  TextInputInstance,
   TouchableOpacity,
   FlatList,
   Modal,
@@ -39,7 +40,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
   const [selectedUser, setSelectedUser] = useState<IUser | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const searchInputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInputInstance>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load suggested users on mount
