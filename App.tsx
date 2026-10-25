@@ -10,7 +10,6 @@ import InboxScreen from "./src/screens/main/InboxScreen";
 import ChatRoomScreen from "./src/screens/main/ChatRoomScreen";
 
 export default function App() {
-  // return <RootNavigator />;
   return (
     <SafeAreaProvider>
       <ChatRoomScreen />

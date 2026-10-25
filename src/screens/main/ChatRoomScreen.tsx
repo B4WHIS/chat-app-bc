@@ -15,6 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "../../components/Avatar";
 import ChatInputToolbar from "../../components/ChatInputToolbar";
+import MessageBubble from "../../components/MessageBubble";
 import { IMessage } from "../../types";
 
 export interface ChatRoomScreenProps {
@@ -40,6 +41,18 @@ const DEFAULT_PARTNER_NAME = "Bình";
 // Dữ liệu tin nhắn mẫu (FlatList inverted sắp xếp từ tin mới nhất ở index 0)
 const INITIAL_MESSAGES: IMessage[] = [
   {
+    id: "msg-5",
+    conversationId: "conv-1",
+    senderId: DEFAULT_PARTNER_ID,
+    text: "Giao diện demo các tính năng nè!",
+    mediaUrls: [
+      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&q=80",
+    ],
+    type: "image",
+    status: "read",
+    createdAt: new Date(Date.now() - 1000 * 60 * 1),
+  },
+  {
     id: "msg-4",
     conversationId: "conv-1",
     senderId: DEFAULT_PARTNER_ID,
@@ -52,9 +65,9 @@ const INITIAL_MESSAGES: IMessage[] = [
     id: "msg-3",
     conversationId: "conv-1",
     senderId: CURRENT_USER_ID,
-    text: "Tuyệt vời! Mình đang hoàn thiện khung ChatRoomScreen và ChatInputToolbar.",
+    text: "Tuyệt vời! Mình đã hoàn thiện xong cả MessageBubble cho Task C3 rồi.",
     type: "text",
-    status: "sent",
+    status: "read",
     createdAt: new Date(Date.now() - 1000 * 60 * 6),
   },
   {
@@ -72,17 +85,10 @@ const INITIAL_MESSAGES: IMessage[] = [
     senderId: CURRENT_USER_ID,
     text: "Alo Bình ơi",
     type: "text",
-    status: "sent",
+    status: "read",
     createdAt: new Date(Date.now() - 1000 * 60 * 15),
   },
 ];
-
-const formatTime = (dateInput: Date | string | number | undefined): string => {
-  if (!dateInput) return "";
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
 
 export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   navigation,
@@ -118,51 +124,37 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   };
 
   const handlePickImage = () => {
-    Alert.alert("Chọn ảnh", "Chức năng chọn ảnh sẽ mở thư viện ảnh.");
+    // Mô phỏng gửi một tin nhắn ảnh từ mock gallery
+    const newImageMessage: IMessage = {
+      id: Date.now().toString(),
+      conversationId: conversationId,
+      senderId: CURRENT_USER_ID,
+      text: "Hình ảnh vừa gửi 📸",
+      mediaUrls: [
+        "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&q=80",
+      ],
+      type: "image",
+      status: "sending",
+      createdAt: new Date(),
+    };
+
+    setMessages((prevMessages) => [newImageMessage, ...prevMessages]);
   };
 
-  // Render từng tin nhắn trong khung chat
-  // Lưu ý: Đây là render khung cơ bản của Task C2. Đến Task C3 sẽ thay thế bằng component MessageBubble.tsx chuyên dụng.
+  // Render từng tin nhắn sử dụng component MessageBubble (Task C3)
   const renderMessageItem = ({ item }: ListRenderItemInfo<IMessage>) => {
     const isMyMessage = item.senderId === CURRENT_USER_ID;
 
     return (
-      <View
-        style={[
-          styles.messageRow,
-          isMyMessage ? styles.myMessageRow : styles.partnerMessageRow,
-        ]}
-      >
-        {!isMyMessage && (
-          <View style={styles.partnerAvatarContainer}>
-            <Avatar uri={partnerAvatar} name={partnerName} size={32} />
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.bubbleContainer,
-            isMyMessage ? styles.myBubble : styles.partnerBubble,
-          ]}
-        >
-          <Text
-            style={[
-              styles.messageText,
-              isMyMessage ? styles.myMessageText : styles.partnerMessageText,
-            ]}
-          >
-            {item.text}
-          </Text>
-          <Text
-            style={[
-              styles.timeText,
-              isMyMessage ? styles.myTimeText : styles.partnerTimeText,
-            ]}
-          >
-            {formatTime(item.createdAt)}
-          </Text>
-        </View>
-      </View>
+      <MessageBubble
+        message={item}
+        isMyMessage={isMyMessage}
+        senderAvatarUrl={partnerAvatar}
+        senderName={partnerName}
+        onPressImage={(url) => {
+          Alert.alert("Xem ảnh", url);
+        }}
+      />
     );
   };
 
@@ -288,58 +280,6 @@ const styles = StyleSheet.create({
   messageListContent: {
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  messageRow: {
-    flexDirection: "row",
-    marginVertical: 4,
-    alignItems: "flex-end",
-  },
-  myMessageRow: {
-    justifyContent: "flex-end",
-  },
-  partnerMessageRow: {
-    justifyContent: "flex-start",
-  },
-  partnerAvatarContainer: {
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  bubbleContainer: {
-    maxWidth: "75%",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  myBubble: {
-    backgroundColor: "#2D6A4F",
-    borderBottomRightRadius: 4,
-  },
-  partnerBubble: {
-    backgroundColor: "#FFFFFF",
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  myMessageText: {
-    color: "#FFFFFF",
-  },
-  partnerMessageText: {
-    color: "#1F2937",
-  },
-  timeText: {
-    fontSize: 10,
-    marginTop: 4,
-    alignSelf: "flex-end",
-  },
-  myTimeText: {
-    color: "rgba(255, 255, 255, 0.75)",
-  },
-  partnerTimeText: {
-    color: "#9CA3AF",
   },
 });
 
