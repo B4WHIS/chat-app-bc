@@ -1,13 +1,16 @@
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, Text, View } from "react-native";
-import LoginScreen from "./src/screens/auth/LoginScreen";
-import RegisterScreen from "./src/screens/auth/RegisterScreen";
+import { StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import RootNavigator from "./src/navigation/RootNavigator";
-import AppButton from "./src/components/AppButton";
 import React from "react";
 
 export default function App() {
-  return <RootNavigator />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <StatusBar style="dark" />
+      <RootNavigator />
+    </GestureHandlerRootView>
+  );
 }
 
 const styles = StyleSheet.create({

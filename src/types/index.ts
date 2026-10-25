@@ -28,6 +28,8 @@ export interface IConversation {
     // Số tin chưa đọc tính riêng cho từng User
     [userId: string]: number;
   };
+  pinnedBy?: string[]; // Mảng chứa userId đã ghim cuộc trò chuyện này
+  mutedBy?: string[]; // Mảng chứa userId đã tắt thông báo cuộc trò chuyện này
   updatedAt: any;
 }
 

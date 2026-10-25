@@ -1,15 +1,15 @@
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
   ActivityIndicator,
-  Text,
-  TouchableOpacity,
 } from "react-native";
 import { auth } from "../config/firebase";
 import { NavigationContainer } from "@react-navigation/native";
 import AuthNavigator from "./AuthNavigator";
+
+import MainNavigator from "./MainNavigator";
 
 const RootNavigator = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -20,33 +20,20 @@ const RootNavigator = () => {
       setUser(currentUser);
       setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#ec3232" />
+        <ActivityIndicator size="large" color="#2D6A4F" />
       </View>
     );
   }
   return (
     <NavigationContainer>
-      {user ? (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <Text>Xin chào: {user.email}</Text>
-          <TouchableOpacity
-            onPress={() => signOut(auth)}
-            style={{ backgroundColor: "#ca5757", padding: 12, borderRadius: 8 }}
-          >
-            Dang xuat
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <AuthNavigator />
-      )}
+      {user ? <MainNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 };
