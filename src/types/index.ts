@@ -1,3 +1,14 @@
+import type { Timestamp, FieldValue } from "firebase/firestore";
+
+// Kiểu dữ liệu thời gian linh hoạt cho Firestore (hỗ trợ Timestamp, FieldValue, Date, string)
+export type FirestoreDate =
+  | Timestamp
+  | FieldValue
+  | Date
+  | string
+  | number
+  | { toMillis?: () => number; toDate?: () => Date };
+
 // 1. BẢNG USERS (Hồ sơ người dùng)
 export interface IUser {
   id: string; // Trùng với Firebase Auth UID
@@ -5,9 +16,9 @@ export interface IUser {
   displayName: string; // Tên hiển thị
   avatarUrl?: string; // Link ảnh đại diện
   isOnline: boolean; // Trạng thái online/offline
-  lastSeen?: any; // Thời điểm cuối cùng mở app
+  lastSeen?: FirestoreDate | null; // Thời điểm cuối cùng mở app
   fcmToken?: string; // Token để sau này làm Push Notification (Sprint 4)
-  createdAt: any;
+  createdAt: FirestoreDate;
 }
 
 // 2. BẢNG CONVERSATIONS (Cuộc hội thoại / Phòng chat)
@@ -23,12 +34,14 @@ export interface IConversation {
   };
   lastMessageText?: string; // Đoạn chat cuối (hoặc "[Hình ảnh]")
   lastMessageSenderId?: string; // Ai gửi tin cuối (để hiện chữ "Bạn: ...")
-  lastMessageTimestamp?: any; // Giờ gửi tin cuối (để sắp xếp tin mới lên đầu)
+  lastMessageTimestamp?: FirestoreDate | null; // Giờ gửi tin cuối (để sắp xếp tin mới lên đầu)
   unreadCount?: {
     // Số tin chưa đọc tính riêng cho từng User
     [userId: string]: number;
   };
-  updatedAt: any;
+  pinnedBy?: string[]; // Mảng chứa userId đã ghim cuộc trò chuyện này
+  mutedBy?: string[]; // Mảng chứa userId đã tắt thông báo cuộc trò chuyện này
+  updatedAt: FirestoreDate;
 }
 
 // 3. BẢNG MESSAGES (Chi tiết từng tin nhắn)
@@ -40,5 +53,23 @@ export interface IMessage {
   mediaUrls?: string[]; // Mảng ảnh (nếu gửi ảnh)
   type: "text" | "image"; // Loại tin nhắn
   status: "sending" | "sent" | "read"; // Trạng thái (Optimistic UI)
-  createdAt: any; // Thời gian gửi
+  createdAt: FirestoreDate; // Thời gian gửi
 }
+
+// 4. NAVIGATION TYPES
+export type MainStackParamList = {
+  MainTabs: undefined;
+  Search: undefined;
+  ChatRoom: {
+    conversationId?: string;
+    partnerId?: string;
+    partnerName?: string;
+    partnerAvatar?: string;
+    partnerUser?: IUser;
+  };
+};
+
+export type AuthStackParamList = {
+  Login: undefined;
+  Register: undefined;
+};

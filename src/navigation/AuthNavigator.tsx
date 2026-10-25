@@ -1,9 +1,11 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
-const Stack = createNativeStackNavigator();
+import { AuthStackParamList } from "../types";
+
+const Stack = createNativeStackNavigator<AuthStackParamList>();
+
 const AuthNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -12,7 +14,5 @@ const AuthNavigator = () => {
     </Stack.Navigator>
   );
 };
-
-const styles = StyleSheet.create({});
 
 export default AuthNavigator;
