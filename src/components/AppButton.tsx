@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -14,8 +15,9 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
-interface AppButtonProps {
+export interface AppButtonProps {
   title?: string;
+  icon?: React.ReactNode;
   onPress?: () => void;
   loading?: boolean;
   disabled?: boolean;
@@ -26,8 +28,9 @@ interface AppButtonProps {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const AppButton: React.FC<AppButtonProps> = ({
+export const AppButton: React.FC<AppButtonProps> = ({
   title,
+  icon,
   onPress,
   loading = false,
   disabled = false,
@@ -73,7 +76,12 @@ const AppButton: React.FC<AppButtonProps> = ({
         }
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.gradientButton}
+        style={[
+          styles.gradientButton,
+          style?.height !== undefined ? { height: "100%", minHeight: 0 } : undefined,
+          style?.borderRadius !== undefined ? { borderRadius: style.borderRadius } : undefined,
+          style?.paddingHorizontal !== undefined ? { paddingHorizontal: style.paddingHorizontal } : undefined,
+        ]}
       >
         {loading ? (
           <ActivityIndicator
@@ -81,15 +89,20 @@ const AppButton: React.FC<AppButtonProps> = ({
             color={variant === "secondary" ? "#2D6A4F" : "#FFFFFF"}
           />
         ) : (
-          <Text
-            style={[
-              styles.title,
-              variant === "secondary" && styles.secondaryTitle,
-              titleStyle,
-            ]}
-          >
-            {title}
-          </Text>
+          <View style={styles.contentRow}>
+            {icon}
+            {Boolean(title) && (
+              <Text
+                style={[
+                  styles.title,
+                  variant === "secondary" && styles.secondaryTitle,
+                  titleStyle,
+                ]}
+              >
+                {title}
+              </Text>
+            )}
+          </View>
         )}
       </LinearGradient>
     </AnimatedPressable>
@@ -112,6 +125,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 20,
+  },
+  contentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   disabledBtn: {
     shadowOpacity: 0.05,

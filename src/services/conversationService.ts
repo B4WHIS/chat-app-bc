@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -49,11 +50,11 @@ export const getOrCreateConversation = async (
     participantsMap: {
       [myUser.id]: {
         displayName: myUser.displayName || "Bạn",
-        avatarUrl: myUser.avatarUrl,
+        avatarUrl: myUser.avatarUrl || "",
       },
       [partnerUser.id]: {
         displayName: partnerUser.displayName || "Bạn bè",
-        avatarUrl: partnerUser.avatarUrl,
+        avatarUrl: partnerUser.avatarUrl || "",
       },
     },
     lastMessageText: "",
@@ -91,11 +92,11 @@ export const createConversationOnFirstMessage = async (
     participantsMap: {
       [myUser.id]: {
         displayName: myUser.displayName || "Bạn",
-        avatarUrl: myUser.avatarUrl,
+        avatarUrl: myUser.avatarUrl || "",
       },
       [partnerUser.id]: {
         displayName: partnerUser.displayName || "Bạn bè",
-        avatarUrl: partnerUser.avatarUrl,
+        avatarUrl: partnerUser.avatarUrl || "",
       },
     },
     lastMessageText: firstMessageText,
@@ -224,8 +225,141 @@ export const markConversationAsRead = async (
  * Xóa cuộc trò chuyện khỏi Firestore
  */
 export const deleteConversation = async (
-  conversationId: string
+  conversationId: string,
+  userId?: string
 ): Promise<void> => {
   const convRef = doc(db, "conversations", conversationId);
   await deleteDoc(convRef);
+
+  if (userId) {
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        deletedConversationIds: arrayUnion(conversationId),
+      });
+    } catch {
+      // Bỏ qua nếu user document chưa tồn tại hoặc offline
+    }
+  }
+};
+
+/**
+ * Tự động tìm các tin nhắn của user trên Firestore và khôi phục
+ * document tương ứng trong collection 'conversations' nếu bị thiếu
+ */
+export const repairMissingConversations = async (userId: string): Promise<void> => {
+  if (!userId) return;
+
+  try {
+    let deletedConvIds: string[] = [];
+    try {
+      const userSnap = await getDoc(doc(db, "users", userId));
+      if (userSnap.exists()) {
+        deletedConvIds = userSnap.data()?.deletedConversationIds || [];
+      }
+    } catch {
+      // Bỏ qua nếu không đọc được user document
+    }
+
+    const messagesRef = collection(db, "messages");
+    const q = query(messagesRef, where("senderId", "==", userId));
+    const snap = await getDocs(q);
+
+    if (snap.empty) return;
+
+    const convIds = Array.from(
+      new Set(snap.docs.map((d) => d.data().conversationId).filter(Boolean))
+    );
+
+    for (const convId of convIds) {
+      if (convId === "conv-1") continue;
+      // Bỏ qua nếu cuộc trò chuyện này đã được người dùng chủ động xóa
+      if (deletedConvIds.includes(convId)) continue;
+
+      const convRef = doc(db, "conversations", convId);
+      const convSnap = await getDoc(convRef);
+
+      if (!convSnap.exists()) {
+        const allMsgQuery = query(messagesRef, where("conversationId", "==", convId));
+        const allMsgSnap = await getDocs(allMsgQuery);
+        let lastText = "";
+        let lastSender = userId;
+        let lastTimestamp: unknown = serverTimestamp();
+        let partnerId = "";
+
+        if (!allMsgSnap.empty) {
+          const msgs: { text?: string; mediaUrls?: string[]; senderId?: string; createdAt?: unknown }[] = [];
+          allMsgSnap.forEach((d) => {
+            const mData = d.data();
+            msgs.push(mData);
+            if (mData.senderId && mData.senderId !== userId && !partnerId) {
+              partnerId = mData.senderId;
+            }
+          });
+
+          const getMs = (val: unknown): number => {
+            if (!val) return 0;
+            if (typeof val === "number") return val;
+            if (val instanceof Date) return val.getTime();
+            if (typeof val === "string") return new Date(val).getTime() || 0;
+            if (typeof val === "object" && val !== null && "toMillis" in val) {
+              return (val as { toMillis: () => number }).toMillis();
+            }
+            if (typeof val === "object" && val !== null && "seconds" in val) {
+              return (val as { seconds: number }).seconds * 1000;
+            }
+            return 0;
+          };
+          msgs.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
+          lastText = msgs[0].text || (msgs[0].mediaUrls?.length ? "[Hình ảnh]" : "");
+          lastSender = msgs[0].senderId || userId;
+          if (msgs[0].createdAt) {
+            lastTimestamp = msgs[0].createdAt;
+          }
+        }
+
+        // Nếu tất cả tin nhắn đều do user gửi, tìm partnerId từ convId không dùng split('_')
+        if (!partnerId) {
+          if (convId.startsWith(userId + "_")) {
+            partnerId = convId.slice(userId.length + 1);
+          } else if (convId.endsWith("_" + userId)) {
+            partnerId = convId.slice(0, -(userId.length + 1));
+          }
+        }
+
+        // Không khôi phục nếu không xác định được partnerId hợp lệ
+        if (!partnerId) continue;
+
+        let partnerName = "Bạn bè";
+        let partnerAvatar = "";
+        const uSnap = await getDoc(doc(db, "users", partnerId));
+        if (uSnap.exists()) {
+          const uData = uSnap.data();
+          partnerName = uData.displayName || uData.email?.split("@")[0] || "Bạn bè";
+          partnerAvatar = uData.avatarUrl || "";
+        }
+
+        const newConv = {
+          id: convId,
+          participantIds: [userId, partnerId],
+          participantsMap: {
+            [userId]: { displayName: "Bạn", avatarUrl: "" },
+            [partnerId]: { displayName: partnerName, avatarUrl: partnerAvatar },
+          },
+          lastMessageText: lastText,
+          lastMessageSenderId: lastSender,
+          lastMessageTimestamp: lastTimestamp,
+          unreadCount: { [userId]: 0, [partnerId]: 0 },
+          pinnedBy: [],
+          mutedBy: [],
+          updatedAt: lastTimestamp,
+        };
+
+        await setDoc(convRef, newConv, { merge: true });
+        console.log("Khôi phục thành công conversation record:", convId);
+      }
+    }
+  } catch (err) {
+    console.warn("Lỗi repairMissingConversations:", err);
+  }
 };

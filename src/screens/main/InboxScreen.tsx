@@ -39,6 +39,8 @@ import {
   toggleMuteConversation,
   markConversationAsRead,
   deleteConversation,
+  generateConversationId,
+  repairMissingConversations,
 } from "../../services/conversationService";
 import { getSuggestedUsers, getUserProfile } from "../../services/userService";
 
@@ -103,6 +105,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     if (!auth.currentUser?.uid) return;
 
     const currentUid = auth.currentUser.uid;
+    repairMissingConversations(currentUid);
     const unsubscribe = subscribeConversations(
       currentUid,
       (firestoreList) => {
@@ -258,10 +261,11 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             // Optimistic update
             setConversations((prev) => prev.filter((c) => c.id !== target.id));
             try {
-              await deleteConversation(target.id);
+              await deleteConversation(target.id, currentUserId);
             } catch (err) {
               console.warn("Lỗi xóa hội thoại Firestore:", err);
             }
+
           },
         },
       ]
@@ -312,6 +316,39 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     }
   }, [navigation]);
 
+  const handleStoryPress = useCallback(
+    (user: IStoryUser) => {
+      const currentUid = auth.currentUser?.uid || "current_user";
+      const existingConv = conversations.find((c) =>
+        c.participantIds?.includes(user.id)
+      );
+
+      const convId =
+        existingConv?.id || generateConversationId(currentUid, user.id);
+
+      if (navigation?.navigate) {
+        navigation.navigate("ChatRoom", {
+          conversationId: convId,
+          partnerId: user.id,
+          partnerName: user.name,
+          partnerAvatar: user.avatarUrl,
+          partnerUser: {
+            id: user.id,
+            email: "",
+            displayName: user.name,
+            avatarUrl: user.avatarUrl,
+            isOnline: user.isOnline,
+            createdAt: new Date(),
+          },
+          conversation: existingConv,
+        });
+      } else {
+        Alert.alert("Mở chat", `Bắt đầu trò chuyện với ${user.name}`);
+      }
+    },
+    [navigation, conversations]
+  );
+
   const renderStoriesAndHeader = useCallback(() => {
     return (
       <View>
@@ -322,9 +359,10 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             onAddStoryPress={() =>
               Alert.alert("Story", "Tạo khoảnh khắc mới trong ngày")
             }
-            onStoryPress={(user) =>
-              Alert.alert("Xem Story", `Đang xem story của ${user.name}`)
-            }
+
+            onStoryPress={handleStoryPress}
+
+
           />
         )}
         <View style={styles.sectionDividerRow}>
@@ -348,6 +386,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     onlineStories,
     activeFilter,
     filteredConversations.length,
+    handleStoryPress,
   ]);
 
   const renderEmptyComponent = () => {
