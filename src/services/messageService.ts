@@ -41,6 +41,7 @@ export interface SendMessageOptions {
   type?: "text" | "image";
   partnerUser?: IUser | { id: string; displayName?: string; avatarUrl?: string };
   myUser?: { id: string; displayName?: string; avatarUrl?: string };
+  partnerId?: string;
 }
 
 /**
@@ -109,10 +110,24 @@ export const sendMessage = async (
 
   const partnerUser = options?.partnerUser;
   const myUser = options?.myUser;
-  const partnerId =
-    partnerUser?.id ||
-    conversationId.split("_").find((id) => id !== senderId) ||
-    "";
+  let partnerId = partnerUser?.id || options?.partnerId || "";
+  if (!partnerId) {
+    const convRef = doc(db, "conversations", conversationId);
+    const convSnap = await getDoc(convRef);
+    if (convSnap.exists()) {
+      const convData = convSnap.data();
+      const found = (convData.participantIds as string[] | undefined)?.find(
+        (id) => id !== senderId
+      );
+      if (found) {
+        partnerId = found;
+      }
+    }
+  }
+
+  if (!partnerId) {
+    throw new Error("Không xác định được người nhận tin nhắn");
+  }
 
   // Bước 1: Đảm bảo conversation tồn tại
   await ensureConversationExists(
@@ -182,7 +197,7 @@ export const subscribeMessages = (
     (snapshot) => {
       const list: IMessage[] = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
+        const data = docSnap.data({ serverTimestamps: "estimate" });
         list.push({
           id: docSnap.id,
           conversationId: data.conversationId || conversationId,
@@ -190,7 +205,7 @@ export const subscribeMessages = (
           text: data.text || "",
           mediaUrls: data.mediaUrls || [],
           type: data.type || "text",
-          status: data.status || "sent",
+          status: docSnap.metadata.hasPendingWrites ? "sending" : data.status || "sent",
           createdAt: data.createdAt,
         });
       });

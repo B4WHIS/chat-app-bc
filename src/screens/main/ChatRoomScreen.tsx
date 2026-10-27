@@ -183,10 +183,28 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
 
     setMessages((prevMessages) => [optimisticMessage, ...prevMessages]);
 
+    // Demo mode: chỉ cập nhật local state, không ghi lên Firestore
+    if (isDefaultDemo) {
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "sent" } : m))
+        );
+      }, 300);
+      return;
+    }
+
     // Gửi qua messageService
     try {
       await sendMessage(conversationId, currentUserId, trimmed, {
-        partnerUser,
+        partnerUser:
+          partnerUser ||
+          (partnerId
+            ? {
+                id: partnerId,
+                displayName: partnerName,
+                avatarUrl: partnerAvatar,
+              }
+            : undefined),
         myUser: {
           id: currentUserId,
           displayName:
@@ -197,6 +215,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
         },
       });
     } catch (err: unknown) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error("Lỗi khi gửi tin nhắn:", errorMsg);
       Alert.alert("Lỗi gửi tin nhắn", errorMsg);
@@ -221,11 +240,29 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
 
     setMessages((prevMessages) => [optimisticMessage, ...prevMessages]);
 
+    // Demo mode: chỉ cập nhật local state, không ghi lên Firestore
+    if (isDefaultDemo) {
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "sent" } : m))
+        );
+      }, 300);
+      return;
+    }
+
     try {
       await sendMessage(conversationId, currentUserId, "Hình ảnh vừa gửi 📸", {
         mediaUrls: [mockImageUrl],
         type: "image",
-        partnerUser,
+        partnerUser:
+          partnerUser ||
+          (partnerId
+            ? {
+                id: partnerId,
+                displayName: partnerName,
+                avatarUrl: partnerAvatar,
+              }
+            : undefined),
         myUser: {
           id: currentUserId,
           displayName:
@@ -235,8 +272,11 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           avatarUrl: auth.currentUser?.photoURL || undefined,
         },
       });
-    } catch (err) {
-      console.warn("Lỗi khi gửi ảnh:", err);
+    } catch (err: unknown) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("Lỗi khi gửi ảnh:", errorMsg);
+      Alert.alert("Lỗi gửi ảnh", errorMsg);
     }
   };
 

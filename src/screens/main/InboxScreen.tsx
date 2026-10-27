@@ -261,7 +261,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             // Optimistic update
             setConversations((prev) => prev.filter((c) => c.id !== target.id));
             try {
-              await deleteConversation(target.id);
+              await deleteConversation(target.id, currentUserId);
             } catch (err) {
               console.warn("Lỗi xóa hội thoại Firestore:", err);
             }

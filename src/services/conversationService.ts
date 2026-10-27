@@ -225,10 +225,22 @@ export const markConversationAsRead = async (
  * Xóa cuộc trò chuyện khỏi Firestore
  */
 export const deleteConversation = async (
-  conversationId: string
+  conversationId: string,
+  userId?: string
 ): Promise<void> => {
   const convRef = doc(db, "conversations", conversationId);
   await deleteDoc(convRef);
+
+  if (userId) {
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        deletedConversationIds: arrayUnion(conversationId),
+      });
+    } catch {
+      // Bỏ qua nếu user document chưa tồn tại hoặc offline
+    }
+  }
 };
 
 /**
@@ -239,6 +251,16 @@ export const repairMissingConversations = async (userId: string): Promise<void> 
   if (!userId) return;
 
   try {
+    let deletedConvIds: string[] = [];
+    try {
+      const userSnap = await getDoc(doc(db, "users", userId));
+      if (userSnap.exists()) {
+        deletedConvIds = userSnap.data()?.deletedConversationIds || [];
+      }
+    } catch {
+      // Bỏ qua nếu không đọc được user document
+    }
+
     const messagesRef = collection(db, "messages");
     const q = query(messagesRef, where("senderId", "==", userId));
     const snap = await getDocs(q);
@@ -251,32 +273,30 @@ export const repairMissingConversations = async (userId: string): Promise<void> 
 
     for (const convId of convIds) {
       if (convId === "conv-1") continue;
+      // Bỏ qua nếu cuộc trò chuyện này đã được người dùng chủ động xóa
+      if (deletedConvIds.includes(convId)) continue;
+
       const convRef = doc(db, "conversations", convId);
       const convSnap = await getDoc(convRef);
 
       if (!convSnap.exists()) {
-        const parts = convId.split("_");
-        const partnerId = parts.find((id: string) => id !== userId) || "";
-
-        let partnerName = "Bạn bè";
-        let partnerAvatar = "";
-        if (partnerId) {
-          const uSnap = await getDoc(doc(db, "users", partnerId));
-          if (uSnap.exists()) {
-            const uData = uSnap.data();
-            partnerName = uData.displayName || uData.email?.split("@")[0] || "Bạn bè";
-            partnerAvatar = uData.avatarUrl || "";
-          }
-        }
-
         const allMsgQuery = query(messagesRef, where("conversationId", "==", convId));
         const allMsgSnap = await getDocs(allMsgQuery);
         let lastText = "";
         let lastSender = userId;
+        let lastTimestamp: unknown = serverTimestamp();
+        let partnerId = "";
 
         if (!allMsgSnap.empty) {
           const msgs: { text?: string; mediaUrls?: string[]; senderId?: string; createdAt?: unknown }[] = [];
-          allMsgSnap.forEach((d) => msgs.push(d.data()));
+          allMsgSnap.forEach((d) => {
+            const mData = d.data();
+            msgs.push(mData);
+            if (mData.senderId && mData.senderId !== userId && !partnerId) {
+              partnerId = mData.senderId;
+            }
+          });
+
           const getMs = (val: unknown): number => {
             if (!val) return 0;
             if (typeof val === "number") return val;
@@ -293,22 +313,46 @@ export const repairMissingConversations = async (userId: string): Promise<void> 
           msgs.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
           lastText = msgs[0].text || (msgs[0].mediaUrls?.length ? "[Hình ảnh]" : "");
           lastSender = msgs[0].senderId || userId;
+          if (msgs[0].createdAt) {
+            lastTimestamp = msgs[0].createdAt;
+          }
+        }
+
+        // Nếu tất cả tin nhắn đều do user gửi, tìm partnerId từ convId không dùng split('_')
+        if (!partnerId) {
+          if (convId.startsWith(userId + "_")) {
+            partnerId = convId.slice(userId.length + 1);
+          } else if (convId.endsWith("_" + userId)) {
+            partnerId = convId.slice(0, -(userId.length + 1));
+          }
+        }
+
+        // Không khôi phục nếu không xác định được partnerId hợp lệ
+        if (!partnerId) continue;
+
+        let partnerName = "Bạn bè";
+        let partnerAvatar = "";
+        const uSnap = await getDoc(doc(db, "users", partnerId));
+        if (uSnap.exists()) {
+          const uData = uSnap.data();
+          partnerName = uData.displayName || uData.email?.split("@")[0] || "Bạn bè";
+          partnerAvatar = uData.avatarUrl || "";
         }
 
         const newConv = {
           id: convId,
-          participantIds: [userId, partnerId].filter(Boolean),
+          participantIds: [userId, partnerId],
           participantsMap: {
             [userId]: { displayName: "Bạn", avatarUrl: "" },
-            ...(partnerId ? { [partnerId]: { displayName: partnerName, avatarUrl: partnerAvatar } } : {}),
+            [partnerId]: { displayName: partnerName, avatarUrl: partnerAvatar },
           },
           lastMessageText: lastText,
           lastMessageSenderId: lastSender,
-          lastMessageTimestamp: serverTimestamp(),
-          unreadCount: { [userId]: 0, ...(partnerId ? { [partnerId]: 0 } : {}) },
+          lastMessageTimestamp: lastTimestamp,
+          unreadCount: { [userId]: 0, [partnerId]: 0 },
           pinnedBy: [],
           mutedBy: [],
-          updatedAt: serverTimestamp(),
+          updatedAt: lastTimestamp,
         };
 
         await setDoc(convRef, newConv, { merge: true });
