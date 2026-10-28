@@ -6,19 +6,23 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { signOutUser } from "../../services/authService";
 
 import { Avatar } from "../../components/Avatar";
 import { auth } from "../../config/firebase";
-import { getUserProfile } from "../../services/userService";
+import { getUserProfile, updateUserAvatar } from "../../services/userService";
+import { uploadAvatarImage } from "../../services/storageService";
 import { IUser } from "../../types";
 
 export const SettingsScreen: React.FC = () => {
   const [profile, setProfile] = React.useState<IUser | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     const uid = auth.currentUser?.uid;
@@ -36,6 +40,57 @@ export const SettingsScreen: React.FC = () => {
     "";
   const email = profile?.email || auth.currentUser?.email || "";
   const avatarUrl = profile?.avatarUrl || auth.currentUser?.photoURL;
+
+  const handlePickAndChangeAvatar = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      Alert.alert("Lỗi", "Vui lòng đăng nhập lại để cập nhật ảnh đại diện.");
+      return;
+    }
+
+    try {
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Quyền truy cập",
+          "Ứng dụng cần quyền truy cập thư viện ảnh để đổi ảnh đại diện."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const localUri = result.assets[0].uri;
+      setUploadingAvatar(true);
+
+      // Upload ảnh đại diện lên Firebase Storage (TASK-B3.3)
+      const downloadUrl = await uploadAvatarImage(localUri, uid);
+
+      // Cập nhật Auth & Firestore (TASK-B3.3)
+      await updateUserAvatar(uid, downloadUrl);
+
+      // Cập nhật state hiển thị ngay tức thì
+      setProfile((prev) => (prev ? { ...prev, avatarUrl: downloadUrl } : null));
+
+      Alert.alert("Thành công", "Đã cập nhật ảnh đại diện mới! 🎉");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Lỗi cập nhật avatar:", msg);
+      Alert.alert("Lỗi cập nhật avatar", msg);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất tài khoản không?", [
@@ -69,11 +124,28 @@ export const SettingsScreen: React.FC = () => {
       >
         {/* User Card */}
         <View style={styles.profileCard}>
-          <Avatar
-            uri={avatarUrl}
-            name={displayName || email}
-            size={68}
-          />
+          <TouchableOpacity
+            style={styles.avatarButton}
+            onPress={handlePickAndChangeAvatar}
+            disabled={uploadingAvatar}
+            activeOpacity={0.8}
+            accessibilityLabel="Đổi ảnh đại diện"
+          >
+            <Avatar
+              uri={avatarUrl}
+              name={displayName || email}
+              size={68}
+            />
+            {uploadingAvatar ? (
+              <View style={styles.avatarLoadingBadge}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              </View>
+            ) : (
+              <View style={styles.cameraIconBadge}>
+                <Ionicons name="camera" size={14} color="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>
               {displayName}
@@ -194,6 +266,35 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 3,
+  },
+  avatarButton: {
+    position: "relative",
+  },
+  cameraIconBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#2D6A4F",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  avatarLoadingBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(45, 106, 79, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
   },
   profileInfo: {
     marginLeft: 14,

@@ -23,7 +23,13 @@
     },
     "plugins": [
       "expo-status-bar",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ung dung can quyen truy cap thu vien anh de gui hinh anh va doi anh dai dien."
+        }
+      ]
     ]
   }
 }
