@@ -3,8 +3,10 @@ import {
   doc,
   addDoc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
+  writeBatch,
   query,
   where,
   onSnapshot,
@@ -230,4 +232,53 @@ export const subscribeMessages = (
   );
 
   return unsubscribe;
+};
+
+/**
+ * Đánh dấu đã đọc toàn bộ tin nhắn trong cuộc hội thoại (TASK-C3.3 - Seen Receipt)
+ * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi
+ * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document
+ */
+export const markMessagesAsRead = async (
+  conversationId: string,
+  currentUserId: string
+): Promise<void> => {
+  if (!conversationId || !currentUserId) return;
+
+  try {
+    // 1. Reset unreadCount trên document conversation
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      [`unreadCount.${currentUserId}`]: 0,
+    }).catch(() => {
+      // Bỏ qua nếu conversation chưa tồn tại
+    });
+
+    // 2. Lấy các tin nhắn trong cuộc trò chuyện do đối phương gửi mà chưa ở trạng thái "read"
+    const messagesRef = collection(db, "messages");
+    const q = query(
+      messagesRef,
+      where("conversationId", "==", conversationId)
+    );
+    const snap = await getDocs(q);
+
+    if (snap.empty) return;
+
+    const batch = writeBatch(db);
+    let hasUpdates = false;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.senderId !== currentUserId && data.status !== "read") {
+        batch.update(docSnap.ref, { status: "read" });
+        hasUpdates = true;
+      }
+    });
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn("Lỗi đánh dấu tin nhắn đã đọc (markMessagesAsRead):", error);
+  }
 };

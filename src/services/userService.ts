@@ -1,5 +1,14 @@
 import { db, auth } from "../config/firebase";
-import { collection, doc, getDoc, getDocs, limit, query, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  updateDoc,
+  onSnapshot,
+} from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { IUser } from "../types";
 
@@ -61,6 +70,42 @@ export const getSuggestedUsers = async (): Promise<IUser[]> => {
   } catch (err) {
     console.warn("Lỗi lấy danh sách users Firestore:", err);
     return [];
+  }
+};
+
+/**
+ * Lắng nghe danh sách người dùng theo thời gian thực (Real-time Presence System)
+ * Tự động cập nhật isOnline khi user khác mở/đóng app
+ */
+export const subscribeSuggestedUsers = (
+  onUpdate: (users: IUser[]) => void
+): (() => void) => {
+  const currentUid = auth.currentUser?.uid;
+  try {
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, limit(30));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: IUser[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as IUser;
+          if (docSnap.id !== currentUid && data.id !== currentUid) {
+            list.push({ ...data, id: docSnap.id });
+          }
+        });
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn("Lỗi lắng nghe danh sách users Firestore:", err);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn("Exception subscribeSuggestedUsers:", err);
+    return () => {};
   }
 };
 

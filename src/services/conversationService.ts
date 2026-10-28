@@ -373,3 +373,58 @@ export const repairMissingConversations = async (userId: string): Promise<void> 
     console.warn("Lỗi repairMissingConversations:", err);
   }
 };
+
+
+/**
+ * Cập nhật trạng thái soạn tin (isTyping) của người dùng vào mảng typingUsers (TASK-C3.2)
+ */
+export const setTypingStatus = async (
+  conversationId: string,
+  userId: string,
+  isTyping: boolean
+): Promise<void> => {
+  if (!conversationId || !userId) return;
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    await updateDoc(convRef, {
+      typingUsers: isTyping ? arrayUnion(userId) : arrayRemove(userId),
+    });
+  } catch (err) {
+    console.warn("Lỗi cập nhật typing status:", err);
+  }
+};
+
+/**
+ * Lắng nghe mảng typingUsers trong cuộc trò chuyện theo thời gian thực (TASK-C3.2)
+ */
+export const subscribeTypingUsers = (
+  conversationId: string,
+  onUpdate: (typingUsers: string[]) => void
+): (() => void) => {
+  if (!conversationId) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  const convRef = doc(db, "conversations", conversationId);
+  const unsubscribe = onSnapshot(
+    convRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const typingUsers: string[] = Array.isArray(data?.typingUsers)
+          ? data.typingUsers
+          : [];
+        onUpdate(typingUsers);
+      } else {
+        onUpdate([]);
+      }
+    },
+    (err) => {
+      console.warn("Lỗi lắng nghe typing status:", err);
+    }
+  );
+
+  return unsubscribe;
+};

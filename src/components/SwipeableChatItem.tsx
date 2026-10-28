@@ -200,8 +200,13 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
           >
             {/* Avatar & Online Dot */}
             <View style={styles.avatarWrapper}>
-              <Avatar uri={avatarUrl} name={displayName} size={52} />
-              {conversation.isOnline && <View style={styles.onlineDot} />}
+              <Avatar
+                uri={avatarUrl}
+                name={displayName}
+                size={52}
+                isOnline={conversation.isOnline}
+              />
+
             </View>
 
             {/* Content Details */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -42,7 +42,10 @@ import {
   generateConversationId,
   repairMissingConversations,
 } from "../../services/conversationService";
-import { getSuggestedUsers, getUserProfile } from "../../services/userService";
+import {
+  getUserProfile,
+  subscribeSuggestedUsers,
+} from "../../services/userService";
 
 const AnimatedFlatList = Animated.createAnimatedComponent(
   FlatList<ExtendedConversation>
@@ -66,6 +69,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const onlineUsersRef = useRef<Record<string, boolean>>({});
 
   // Load real profile from Firestore
   useEffect(() => {
@@ -86,9 +90,15 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     }
   }, []);
 
-  // Load real active users from Firestore
+  // Lắng nghe người dùng & trạng thái trực tuyến real-time (TASK-C3.1)
   useEffect(() => {
-    getSuggestedUsers().then((users) => {
+    const unsubscribe = subscribeSuggestedUsers((users) => {
+      const userMap: Record<string, boolean> = {};
+      users.forEach((u) => {
+        userMap[u.id] = Boolean(u.isOnline);
+      });
+      onlineUsersRef.current = userMap;
+
       const mapped: IStoryUser[] = users.map((u) => ({
         id: u.id,
         name: u.displayName || u.email.split("@")[0],
@@ -97,7 +107,22 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
         hasStory: false,
       }));
       setOnlineStories(mapped);
+
+      // Đồng bộ ngay trạng thái isOnline của bạn chat vào danh sách cuộc trò chuyện
+      setConversations((prev) =>
+        prev.map((conv) => {
+          const partnerId = conv.participantIds?.find(
+            (id) => id !== auth.currentUser?.uid
+          );
+          return {
+            ...conv,
+            isOnline: partnerId ? Boolean(userMap[partnerId]) : conv.isOnline,
+          };
+        })
+      );
     });
+
+    return () => unsubscribe();
   }, []);
 
   // Real-time subscription to Cloud Firestore conversations
@@ -123,6 +148,9 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             partnerAvatar: partner?.avatarUrl,
             isPinned: conv.pinnedBy?.includes(currentUid) || false,
             isMuted: conv.mutedBy?.includes(currentUid) || false,
+            isOnline: partnerId
+              ? Boolean(onlineUsersRef.current[partnerId])
+              : false,
           };
         });
         setConversations(mapped);
@@ -265,12 +293,11 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             } catch (err) {
               console.warn("Lỗi xóa hội thoại Firestore:", err);
             }
-
           },
         },
       ]
     );
-  }, []);
+  }, [currentUserId]);
 
   const handleChatPress = useCallback(
     (item: ExtendedConversation) => {
@@ -359,10 +386,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
             onAddStoryPress={() =>
               Alert.alert("Story", "Tạo khoảnh khắc mới trong ngày")
             }
-
             onStoryPress={handleStoryPress}
-
-
           />
         )}
         <View style={styles.sectionDividerRow}>
