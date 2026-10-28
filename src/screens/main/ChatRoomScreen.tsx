@@ -240,15 +240,20 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // Không ép cắt ảnh vuông khi gửi tin nhắn
+        quality: 0.7,
+        base64: true,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
         return;
       }
 
-      const localUri = result.assets[0].uri;
+      const selectedAsset = result.assets[0];
+      const localUri = selectedAsset.uri;
+      const imagePayload = selectedAsset.base64
+        ? `data:image/jpeg;base64,${selectedAsset.base64}`
+        : localUri;
       const tempId = `temp-${Date.now()}`;
 
       const optimisticMessage: IMessage = {
@@ -274,8 +279,8 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
         return;
       }
 
-      // Tải ảnh lên Firebase Storage
-      const downloadUrl = await uploadChatImage(localUri, conversationId);
+      // Tải ảnh lên Cloudinary
+      const downloadUrl = await uploadChatImage(imagePayload, conversationId);
 
       // Gửi tin nhắn chứa downloadUrl lên Firestore
       await sendMessage(conversationId, currentUserId, "", {

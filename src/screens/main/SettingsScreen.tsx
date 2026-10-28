@@ -63,18 +63,24 @@ export const SettingsScreen: React.FC = () => {
         mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
         return;
       }
 
-      const localUri = result.assets[0].uri;
+      const selectedAsset = result.assets[0];
+      const localUri = selectedAsset.uri;
+      const imagePayload = selectedAsset.base64
+        ? `data:image/jpeg;base64,${selectedAsset.base64}`
+        : localUri;
+
       setUploadingAvatar(true);
 
-      // Upload ảnh đại diện lên Firebase Storage (TASK-B3.3)
-      const downloadUrl = await uploadAvatarImage(localUri, uid);
+      // Upload ảnh đại diện lên Cloudinary (TASK-B3.3)
+      const downloadUrl = await uploadAvatarImage(imagePayload, uid);
 
       // Cập nhật Auth & Firestore (TASK-B3.3)
       await updateUserAvatar(uid, downloadUrl);
