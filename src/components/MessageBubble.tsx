@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Image,
   Dimensions,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "./Avatar";
@@ -53,6 +54,46 @@ const formatMessageTime = (dateInput: unknown): string => {
   return "";
 };
 
+/**
+ * Component hiển thị ảnh với hiệu ứng loading spinner và bo góc chuẩn
+ */
+interface ImageWithLoaderProps {
+  uri: string;
+  style: any;
+  wrapperStyle?: any;
+  onPress?: () => void;
+}
+
+const ImageWithLoader: React.FC<ImageWithLoaderProps> = ({
+  uri,
+  style,
+  wrapperStyle,
+  onPress,
+}) => {
+  const [loading, setLoading] = useState<boolean>(true);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={[styles.imageWithLoaderWrapper, wrapperStyle]}
+    >
+      {loading && (
+        <View style={styles.spinnerContainer}>
+          <ActivityIndicator size="small" color="#2D6A4F" />
+        </View>
+      )}
+      <Image
+        source={{ uri }}
+        style={style}
+        resizeMode="cover"
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+      />
+    </TouchableOpacity>
+  );
+};
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   isMyMessage,
@@ -73,17 +114,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     // 1 ảnh duy nhất
     if (count === 1) {
       return (
-        <TouchableOpacity
-          activeOpacity={0.9}
+        <ImageWithLoader
+          uri={urls[0]}
+          style={styles.singleImage}
+          wrapperStyle={styles.singleImageWrapper}
           onPress={() => onPressImage?.(urls[0])}
-          style={styles.singleImageWrapper}
-        >
-          <Image
-            source={{ uri: urls[0] }}
-            style={styles.singleImage}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
+        />
       );
     }
 
@@ -95,21 +131,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           const isLastSingle = !isEvenCount && index === count - 1;
 
           return (
-            <TouchableOpacity
+            <ImageWithLoader
               key={`${url}-${index}`}
-              activeOpacity={0.9}
-              onPress={() => onPressImage?.(url)}
-              style={[
+              uri={url}
+              style={styles.gridImage}
+              wrapperStyle={[
                 styles.gridImageWrapper,
                 isLastSingle && styles.gridImageWrapperFull,
               ]}
-            >
-              <Image
-                source={{ uri: url }}
-                style={styles.gridImage}
-                resizeMode="cover"
-              />
-            </TouchableOpacity>
+              onPress={() => onPressImage?.(url)}
+            />
           );
         })}
       </View>
@@ -253,6 +284,18 @@ const styles = StyleSheet.create({
   },
   textWithImage: {
     marginTop: 6,
+  },
+  imageWithLoaderWrapper: {
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  spinnerContainer: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
   },
   singleImageWrapper: {
     borderRadius: 12,

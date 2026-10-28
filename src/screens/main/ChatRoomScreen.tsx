@@ -13,15 +13,18 @@ import {
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { Avatar } from "../../components/Avatar";
 import ChatInputToolbar from "../../components/ChatInputToolbar";
 import MessageBubble from "../../components/MessageBubble";
+import ImageViewerModal from "../../components/ImageViewerModal";
 import AppButton from "../../components/AppButton";
 import { auth } from "../../config/firebase";
 import {
   sendMessage,
   subscribeMessages,
 } from "../../services/messageService";
+import { uploadChatImage } from "../../services/storageService";
 import { IMessage, IUser, IConversation } from "../../types";
 
 export interface ChatRoomRouteParams {
@@ -123,14 +126,16 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   // Kiểm tra trạng thái hoạt động của đối phương
   const isOnline = partnerUser?.isOnline ?? true;
 
-  // Nếu là phiên demo độc lập thì hiện mock messages, nếu mở phòng chat thực tế thì kết nối Firestore Real-time
+  // Nếu là phiên demo chưa đăng nhập thì hiện mock messages, nếu đã đăng nhập thật thì luôn kết nối Firestore Real-time
   const isDefaultDemo =
+    !auth.currentUser &&
     (!route?.params?.conversationId || route.params.conversationId === "conv-1") &&
     !partnerUser;
 
   const [messages, setMessages] = useState<IMessage[]>(
     isDefaultDemo ? INITIAL_MESSAGES : []
   );
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Lắng nghe tin nhắn thời gian thực qua Cloud Firestore onSnapshot (TASK-C2.2)
   useEffect(() => {
@@ -223,36 +228,64 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   };
 
   const handlePickImage = async () => {
-    const mockImageUrl =
-      "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&q=80";
-
-    const tempId = `temp-${Date.now()}`;
-    const optimisticMessage: IMessage = {
-      id: tempId,
-      conversationId,
-      senderId: currentUserId,
-      text: "Hình ảnh vừa gửi 📸",
-      mediaUrls: [mockImageUrl],
-      type: "image",
-      status: "sending",
-      createdAt: new Date(),
-    };
-
-    setMessages((prevMessages) => [optimisticMessage, ...prevMessages]);
-
-    // Demo mode: chỉ cập nhật local state, không ghi lên Firestore
-    if (isDefaultDemo) {
-      setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, status: "sent" } : m))
-        );
-      }, 300);
-      return;
-    }
-
     try {
-      await sendMessage(conversationId, currentUserId, "Hình ảnh vừa gửi 📸", {
-        mediaUrls: [mockImageUrl],
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Quyền truy cập",
+          "Ứng dụng cần quyền truy cập thư viện ảnh để gửi hình ảnh."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false, // Không ép cắt ảnh vuông khi gửi tin nhắn
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const selectedAsset = result.assets[0];
+      const localUri = selectedAsset.uri;
+      const imagePayload = selectedAsset.base64
+        ? `data:image/jpeg;base64,${selectedAsset.base64}`
+        : localUri;
+      const tempId = `temp-${Date.now()}`;
+
+      const optimisticMessage: IMessage = {
+        id: tempId,
+        conversationId,
+        senderId: currentUserId,
+        text: "",
+        mediaUrls: [localUri],
+        type: "image",
+        status: "sending",
+        createdAt: new Date(),
+      };
+
+      setMessages((prevMessages) => [optimisticMessage, ...prevMessages]);
+
+      // Demo mode: chỉ cập nhật local state, không ghi lên Firestore
+      if (isDefaultDemo) {
+        setTimeout(() => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, status: "sent" } : m))
+          );
+        }, 400);
+        return;
+      }
+
+      // Tải ảnh lên Cloudinary
+      const downloadUrl = await uploadChatImage(imagePayload, conversationId);
+
+      // Gửi tin nhắn chứa downloadUrl lên Firestore
+      await sendMessage(conversationId, currentUserId, "", {
+        mediaUrls: [downloadUrl],
         type: "image",
         partnerUser:
           partnerUser ||
@@ -272,8 +305,16 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           avatarUrl: auth.currentUser?.photoURL || undefined,
         },
       });
+
+      // Cập nhật Optimistic message với link ảnh chính thức
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? { ...m, mediaUrls: [downloadUrl], status: "sent" }
+            : m
+        )
+      );
     } catch (err: unknown) {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error("Lỗi khi gửi ảnh:", errorMsg);
       Alert.alert("Lỗi gửi ảnh", errorMsg);
@@ -291,7 +332,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
         senderAvatarUrl={partnerAvatar}
         senderName={partnerName}
         onPressImage={(url) => {
-          Alert.alert("Xem ảnh", url);
+          setSelectedImage(url);
         }}
       />
     );
@@ -384,6 +425,13 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
         <ChatInputToolbar
           onSendMessage={handleSendMessage}
           onPickImage={handlePickImage}
+        />
+
+        {/* Modal xem ảnh toàn màn hình (TASK-B3.2) */}
+        <ImageViewerModal
+          visible={Boolean(selectedImage)}
+          imageUrl={selectedImage}
+          onClose={() => setSelectedImage(null)}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

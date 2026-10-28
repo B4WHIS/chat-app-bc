@@ -1,5 +1,6 @@
 import { db, auth } from "../config/firebase";
-import { collection, doc, getDoc, getDocs, limit, query } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, updateDoc } from "firebase/firestore";
+import { updateProfile } from "firebase/auth";
 import { IUser } from "../types";
 
 /**
@@ -77,5 +78,28 @@ export const getUserProfile = async (uid: string): Promise<IUser | null> => {
   } catch (error) {
     console.warn("Lỗi lấy thông tin user profile:", error);
     return null;
+  }
+};
+
+/**
+ * Cập nhật avatar của người dùng:
+ * 1. Cập nhật photoURL trong Firebase Auth
+ * 2. Cập nhật avatarUrl trong Firestore doc 'users/{uid}'
+ */
+export const updateUserAvatar = async (uid: string, photoURL: string): Promise<void> => {
+  try {
+    // 1. Cập nhật Firebase Auth nếu đang là currentUser
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      await updateProfile(auth.currentUser, { photoURL });
+    }
+
+    // 2. Cập nhật Firestore document 'users/{uid}'
+    const userDocRef = doc(db, "users", uid);
+    await updateDoc(userDocRef, {
+      avatarUrl: photoURL,
+    });
+  } catch (error) {
+    console.error("Lỗi cập nhật avatar:", error);
+    throw error;
   }
 };
