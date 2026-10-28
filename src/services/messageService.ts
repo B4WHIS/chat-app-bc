@@ -88,6 +88,16 @@ const ensureConversationExists = async (
     };
 
     await setDoc(convRef, newConv);
+  } else {
+    // Đảm bảo participantIds luôn là Array chuẩn để Firestore query array-contains hoạt động chuẩn 100%
+    const data = convSnap.data();
+    if (!Array.isArray(data.participantIds)) {
+      await updateDoc(convRef, {
+        participantIds: [senderId, partnerId],
+        pinnedBy: Array.isArray(data.pinnedBy) ? data.pinnedBy : [],
+        mutedBy: Array.isArray(data.mutedBy) ? data.mutedBy : [],
+      });
+    }
   }
 };
 

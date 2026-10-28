@@ -279,7 +279,17 @@ export const repairMissingConversations = async (userId: string): Promise<void> 
       const convRef = doc(db, "conversations", convId);
       const convSnap = await getDoc(convRef);
 
-      if (!convSnap.exists()) {
+      if (convSnap.exists()) {
+        const cData = convSnap.data();
+        if (cData.participantIds && !Array.isArray(cData.participantIds)) {
+          const arr = Object.values(cData.participantIds).filter(Boolean);
+          await updateDoc(convRef, {
+            participantIds: arr,
+            pinnedBy: Array.isArray(cData.pinnedBy) ? cData.pinnedBy : [],
+            mutedBy: Array.isArray(cData.mutedBy) ? cData.mutedBy : [],
+          });
+        }
+      } else {
         const allMsgQuery = query(messagesRef, where("conversationId", "==", convId));
         const allMsgSnap = await getDocs(allMsgQuery);
         let lastText = "";

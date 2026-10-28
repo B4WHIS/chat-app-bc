@@ -126,8 +126,9 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   // Kiểm tra trạng thái hoạt động của đối phương
   const isOnline = partnerUser?.isOnline ?? true;
 
-  // Nếu là phiên demo độc lập thì hiện mock messages, nếu mở phòng chat thực tế thì kết nối Firestore Real-time
+  // Nếu là phiên demo chưa đăng nhập thì hiện mock messages, nếu đã đăng nhập thật thì luôn kết nối Firestore Real-time
   const isDefaultDemo =
+    !auth.currentUser &&
     (!route?.params?.conversationId || route.params.conversationId === "conv-1") &&
     !partnerUser;
 
