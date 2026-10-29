@@ -16,6 +16,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { IMessage, IConversation, IUser } from "../types";
+import { getUserProfile } from "./userService";
+import { sendPushNotification } from "./notificationService";
 
 /**
  * Chuẩn hóa thời gian sang milliseconds phục vụ sắp xếp tin nhắn
@@ -124,6 +126,15 @@ export const sendMessage = async (
   const partnerUser = options?.partnerUser;
   const myUser = options?.myUser;
   let partnerId = partnerUser?.id || options?.partnerId || "";
+  // Đảm bảo partnerId luôn là đối phương, không bao giờ là chính senderId
+  if (!partnerId || partnerId === senderId) {
+    if (conversationId && conversationId.includes("_")) {
+      const candidate = conversationId.split("_").find((id) => id !== senderId);
+      if (candidate) {
+        partnerId = candidate;
+      }
+    }
+  }
   if (!partnerId) {
     const convRef = doc(db, "conversations", conversationId);
     const convSnap = await getDoc(convRef);
@@ -181,6 +192,37 @@ export const sendMessage = async (
   }
 
   await updateDoc(convRef, updatePayload);
+
+  // Bước 4 (TASK-B4.2): Tự động gửi thông báo đẩy (Push Notification) cho ĐỐI PHƯƠNG (không gửi cho chính mình)
+  if (partnerId && partnerId !== senderId) {
+    (async () => {
+      try {
+        const partnerProfile = await getUserProfile(partnerId);
+        if (partnerProfile) {
+          const targetToken = partnerProfile.pushToken || partnerProfile.fcmToken;
+          if (targetToken) {
+            const senderName = myUser?.displayName || "Tin nhắn mới";
+            await sendPushNotification({
+              pushToken: targetToken,
+              title: senderName,
+              body: displayText || "Bạn có tin nhắn mới",
+              data: {
+                conversationId,
+                partnerId: senderId,
+                partnerName: senderName,
+                partnerAvatar: myUser?.avatarUrl || "",
+              },
+            });
+            console.log(`=> Đã gửi Push Notification tới đối phương (${partnerId}):`, targetToken);
+          } else {
+            console.log(`=> Đối phương (${partnerId}) chưa có pushToken trên Firestore.`);
+          }
+        }
+      } catch (pushErr) {
+        console.warn("Lỗi gửi push notification cho đối phương:", pushErr);
+      }
+    })();
+  }
 
   return {
     id: docRef.id,

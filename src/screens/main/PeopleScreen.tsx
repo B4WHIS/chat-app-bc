@@ -39,7 +39,7 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
         partnerId: user.id,
         partnerName: user.displayName,
         partnerAvatar: user.avatarUrl,
-        partnerUser: user,
+        partnerUser: { ...user, createdAt: String(user.createdAt || "") },
       });
     }
   };

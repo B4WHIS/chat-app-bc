@@ -49,7 +49,7 @@ export const setupPresence = (userId: string): (() => void) => {
       currentAppState === "active" &&
       nextAppState.match(/inactive|background/)
     ) {
-      // Ứng dụng bị đưa xuống background hoặc đóng
+      // Ứng dụng bị đưa xuống background hoặc người dùng khóa màn hình
       setUserOnlineStatus(userId, false);
     }
     currentAppState = nextAppState;
@@ -57,32 +57,29 @@ export const setupPresence = (userId: string): (() => void) => {
 
   const subscription = AppState.addEventListener("change", handleAppStateChange);
 
+  // Trả về cleanup callback: hủy lắng nghe và đánh dấu offline
   return () => {
-    // Gỡ bỏ listener và chuyển trạng thái về offline khi unmount / đăng xuất
     subscription.remove();
     setUserOnlineStatus(userId, false);
   };
 };
 
-export interface UserPresenceState {
-  isOnline: boolean;
-  lastSeen?: any;
-}
-
 /**
- * Lắng nghe trạng thái Online/Offline và lastSeen của một người dùng theo thời gian thực (Real-time).
- * Phục vụ hiển thị chấm xanh và trạng thái hoạt động ở ChatRoomScreen hoặc danh bạ.
+ * Lắng nghe thời gian thực trạng thái trực tuyến của 1 user cụ thể
+ * Phục vụ hiển thị chấm xanh "Online" / "Hoạt động ... trước" trên ChatHeader
+ * 
+ * @param targetUserId ID người cần theo dõi trạng thái
+ * @param onUpdate Callback trả về { isOnline, lastSeen }
+ * @returns Hàm unsubscribe
  */
 export const subscribeUserPresence = (
-  userId: string,
-  onUpdate: (presence: UserPresenceState) => void
+  targetUserId: string,
+  onUpdate: (presence: { isOnline: boolean; lastSeen?: any }) => void
 ): (() => void) => {
-  if (!userId) {
-    onUpdate({ isOnline: false });
-    return () => {};
-  }
+  if (!targetUserId) return () => {};
 
-  const userDocRef = doc(db, "users", userId);
+  const userDocRef = doc(db, "users", targetUserId);
+
   const unsubscribe = onSnapshot(
     userDocRef,
     (docSnap) => {
@@ -97,7 +94,7 @@ export const subscribeUserPresence = (
       }
     },
     (error) => {
-      console.warn(`Lỗi lắng nghe presence của user ${userId}:`, error);
+      console.warn("Lỗi subscribeUserPresence:", error);
     }
   );
 
@@ -105,46 +102,54 @@ export const subscribeUserPresence = (
 };
 
 /**
- * Định dạng thời điểm lastSeen thành văn bản tiếng Việt thân thiện
- * ví dụ: "Vừa mới truy cập", "Hoạt động 5 phút trước", "Hoạt động hôm nay lúc 14:30"
+ * Helper format hiển thị thời gian hoạt động cuối (lastSeen) thân thiện
+ * Ví dụ: "Vừa xong", "5 phút trước", "2 giờ trước", "Hôm qua lúc 14:30"
  */
 export const formatLastSeen = (lastSeen: any): string => {
-  if (!lastSeen) return "Ngoại tuyến";
+  if (!lastSeen) return "Chưa hoạt động gần đây";
 
-  let date: Date | null = null;
-  if (lastSeen instanceof Date) {
-    date = lastSeen;
-  } else if (typeof lastSeen === "object" && typeof lastSeen.toDate === "function") {
+  let date: Date;
+  if (lastSeen.toDate && typeof lastSeen.toDate === "function") {
     date = lastSeen.toDate();
-  } else if (typeof lastSeen === "object" && typeof lastSeen.toMillis === "function") {
-    date = new Date(lastSeen.toMillis());
+  } else if (lastSeen instanceof Date) {
+    date = lastSeen;
   } else if (typeof lastSeen === "string" || typeof lastSeen === "number") {
     date = new Date(lastSeen);
+  } else {
+    return "Chưa hoạt động gần đây";
   }
 
-  if (!date || isNaN(date.getTime())) {
-    return "Ngoại tuyến";
+  if (Number.isNaN(date.getTime())) {
+    return "Chưa hoạt động gần đây";
   }
 
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffMins < 1) return "Vừa mới truy cập";
-  if (diffMins < 60) return `Hoạt động ${diffMins} phút trước`;
-  if (diffHours < 24) {
-    const timeStr = date.toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    return `Hoạt động hôm nay lúc ${timeStr}`;
+  if (diffInSeconds < 60) {
+    return "Vừa mới truy cập";
   }
 
-  const dateStr = date.toLocaleDateString("vi-VN", {
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} phút trước`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours} giờ trước`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays === 1) {
+    return "Hôm qua";
+  }
+  if (diffInDays < 7) {
+    return `${diffInDays} ngày trước`;
+  }
+
+  return date.toLocaleDateString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
   });
-  return `Hoạt động ngày ${dateStr}`;
 };
