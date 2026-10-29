@@ -9,10 +9,14 @@ import {
   writeBatch,
   query,
   where,
+  orderBy,
   limit,
+  startAfter,
   onSnapshot,
   serverTimestamp,
   increment,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { IMessage, IConversation, IUser } from "../types";
@@ -189,21 +193,30 @@ export const sendMessage = async (
 };
 
 /**
- * Lắng nghe tin nhắn theo thời gian thực qua onSnapshot.
+ * Lắng nghe tin nhắn theo thời gian thực qua onSnapshot với giới hạn ban đầu (mặc định 20 tin).
  * Trả về hàm unsubscribe.
  */
 export const subscribeMessages = (
   conversationId: string,
-  onUpdate: (messages: IMessage[]) => void,
-  onError?: (error: Error) => void
+  onUpdate: (
+    messages: IMessage[],
+    lastDocSnapshot: QueryDocumentSnapshot<DocumentData> | null
+  ) => void,
+  onError?: (error: Error) => void,
+  limitCount: number = 20
 ): (() => void) => {
   if (!conversationId) {
-    onUpdate([]);
+    onUpdate([], null);
     return () => {};
   }
 
   const messagesRef = collection(db, "messages");
-  const q = query(messagesRef, where("conversationId", "==", conversationId));
+  // Query 20 tin nhắn mới nhất
+  const q = query(
+    messagesRef,
+    where("conversationId", "==", conversationId),
+    limit(limitCount)
+  );
 
   const unsubscribe = onSnapshot(
     q,
@@ -223,8 +236,12 @@ export const subscribeMessages = (
         });
       });
 
+      // Sắp xếp giảm dần theo thời gian (tin mới nhất ở index 0 cho FlatList inverted)
       list.sort((a, b) => normalizeTimestamp(b.createdAt) - normalizeTimestamp(a.createdAt));
-      onUpdate(list);
+
+      // Lấy snapshot của tin nhắn cũ nhất trong batch này để phục vụ phân trang startAfter
+      const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+      onUpdate(list, lastDoc);
     },
     (error) => {
       console.error("subscribeMessages error:", error);
@@ -235,10 +252,85 @@ export const subscribeMessages = (
   return unsubscribe;
 };
 
+export interface LoadMoreMessagesResult {
+  messages: IMessage[];
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+/**
+ * Nâng Cấp Message Engine Hỗ Trợ Phân Trang (TASK-C4.1 - Message Pagination / Infinite Scroll)
+ * Tải thêm limitCount tin nhắn cũ hơn doc hiện tại sử dụng startAfter() và limit()
+ *
+ * @param conversationId ID cuộc hội thoại
+ * @param lastDoc Document snapshot của tin nhắn cũ nhất trong batch trước
+ * @param limitCount Số lượng tin nhắn cần tải mỗi trang (mặc định 20)
+ */
+export const loadMoreMessages = async (
+  conversationId: string,
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null,
+  limitCount: number = 20
+): Promise<LoadMoreMessagesResult> => {
+  if (!conversationId) {
+    return { messages: [], lastDoc: null, hasMore: false };
+  }
+
+  const messagesRef = collection(db, "messages");
+
+  try {
+    let q;
+    if (lastDoc) {
+      q = query(
+        messagesRef,
+        where("conversationId", "==", conversationId),
+        startAfter(lastDoc),
+        limit(limitCount)
+      );
+    } else {
+      q = query(
+        messagesRef,
+        where("conversationId", "==", conversationId),
+        limit(limitCount)
+      );
+    }
+
+    const snapshot = await getDocs(q);
+    const list: IMessage[] = [];
+
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data({ serverTimestamps: "estimate" });
+      list.push({
+        id: docSnap.id,
+        conversationId: data.conversationId || conversationId,
+        senderId: data.senderId || "",
+        text: data.text || "",
+        mediaUrls: data.mediaUrls || [],
+        type: data.type || "text",
+        status: data.status || "sent",
+        createdAt: data.createdAt,
+      });
+    });
+
+    list.sort((a, b) => normalizeTimestamp(b.createdAt) - normalizeTimestamp(a.createdAt));
+
+    const newLastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+    const hasMore = snapshot.docs.length >= limitCount;
+
+    return {
+      messages: list,
+      lastDoc: newLastDoc,
+      hasMore,
+    };
+  } catch (error) {
+    console.warn("Lỗi loadMoreMessages:", error);
+    return { messages: [], lastDoc, hasMore: false };
+  }
+};
+
 /**
  * Đánh dấu đã đọc tin nhắn trong cuộc hội thoại (TASK-C3.3 - Seen Receipt)
- * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi (sử dụng unreadMessageIds nếu có, tránh query toàn bộ)
- * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document sau khi cập nhật tin nhắn thành công
+ * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi
+ * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document
  */
 export const markMessagesAsRead = async (
   conversationId: string,
@@ -254,7 +346,7 @@ export const markMessagesAsRead = async (
     if (Array.isArray(unreadMessageIds)) {
       targetIds = unreadMessageIds;
     } else {
-      // Nếu không có unreadMessageIds truyền sẵn, query tối đa 500 tin nhắn của hội thoại
+      // Query các tin nhắn chưa đọc của hội thoại
       const messagesRef = collection(db, "messages");
       const q = query(
         messagesRef,

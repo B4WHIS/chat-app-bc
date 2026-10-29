@@ -11,9 +11,11 @@ import {
   ListRenderItemInfo,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { Avatar } from "../../components/Avatar";
 import ChatInputToolbar from "../../components/ChatInputToolbar";
 import MessageBubble from "../../components/MessageBubble";
@@ -25,6 +27,7 @@ import {
   sendMessage,
   subscribeMessages,
   markMessagesAsRead,
+  loadMoreMessages,
 } from "../../services/messageService";
 import { uploadChatImage } from "../../services/storageService";
 import {
@@ -35,6 +38,10 @@ import {
   setTypingStatus,
   subscribeTypingUsers,
 } from "../../services/conversationService";
+import {
+  getCachedMessages,
+  setCachedMessages,
+} from "../../services/cacheService";
 import { IMessage, IUser, IConversation } from "../../types";
 
 export interface ChatRoomRouteParams {
@@ -144,6 +151,11 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   );
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // Phân trang dữ liệu tin nhắn cũ (TASK-C4.1 - Message Pagination)
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+
   // Theo dõi trạng thái trực tuyến (isOnline / lastSeen) thời gian thực của đối phương (TASK-C3.1)
   const [partnerPresence, setPartnerPresence] = useState<{
     isOnline: boolean;
@@ -228,7 +240,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     }
   };
 
-  // Lắng nghe tin nhắn thời gian thực qua Cloud Firestore onSnapshot (TASK-C2.2 & C3.3)
+  // Lắng nghe tin nhắn thời gian thực qua Cloud Firestore onSnapshot (TASK-C2.2, C3.3 & C4.1)
   useEffect(() => {
     if (!conversationId) return;
 
@@ -240,10 +252,31 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     // Khi mở phòng chat: Đánh dấu đã đọc và reset unreadCount về 0 (TASK-C3.3)
     markMessagesAsRead(conversationId, currentUserId);
 
+    // Nạp tin nhắn từ AsyncStorage cache để hiển thị tức thì không bị màn hình trắng (TASK-C4.2)
+    getCachedMessages(conversationId).then((cached) => {
+      if (cached && cached.length > 0) {
+        setMessages((prev) => (prev.length === 0 ? cached : prev));
+      }
+    });
+
+    // Tải 20 tin nhắn đầu tiên và lắng nghe real-time (TASK-C4.1)
     const unsubscribe = subscribeMessages(
       conversationId,
-      (realtimeMessages) => {
-        setMessages(realtimeMessages);
+      (realtimeMessages, initialLastDoc) => {
+        // Cập nhật cache cục bộ (TASK-C4.2)
+        setCachedMessages(conversationId, realtimeMessages);
+
+        setMessages((prev) => {
+          const realtimeIds = new Set(realtimeMessages.map((m) => m.id));
+          // Giữ lại các tin nhắn cũ hơn đã tải thêm bằng infinite scroll
+          const olderPagedMessages = prev.filter((m) => !realtimeIds.has(m.id));
+          return [...realtimeMessages, ...olderPagedMessages];
+        });
+
+        // Lưu document snapshot cuối cùng của batch đầu để phục vụ phân trang
+        if (!lastDocRef.current) {
+          lastDocRef.current = initialLastDoc;
+        }
 
         // Lấy danh sách ID các tin nhắn từ đối phương chưa ở trạng thái "read"
         const unreadPartnerMsgIds = realtimeMessages
@@ -267,7 +300,8 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       },
       (error) => {
         console.warn("Lỗi tải tin nhắn real-time:", error);
-      }
+      },
+      20
     );
 
     return () => {
@@ -277,6 +311,38 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       unsubscribe();
     };
   }, [conversationId, isDefaultDemo, currentUserId, partnerUser]);
+
+  // Phân trang tải thêm 20 tin nhắn cũ khi cuộn lên trên đỉnh FlatList (TASK-C4.1 - Infinite Scroll)
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore || !conversationId || isDefaultDemo) return;
+    if (!lastDocRef.current) return;
+
+    setLoadingMore(true);
+    try {
+      const result = await loadMoreMessages(
+        conversationId,
+        lastDocRef.current,
+        20
+      );
+
+      if (result.messages.length > 0) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const uniqueOlder = result.messages.filter(
+            (m) => !existingIds.has(m.id)
+          );
+          return [...prev, ...uniqueOlder];
+        });
+        lastDocRef.current = result.lastDoc;
+      }
+
+      setHasMore(result.hasMore);
+    } catch (err) {
+      console.warn("Lỗi tải thêm tin nhắn cũ:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleBack = () => {
     if (readTimeoutRef.current) {
@@ -497,6 +563,17 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     </View>
   );
 
+  // Vòng quay loading nhỏ trên đỉnh FlatList khi đang cuộn tải thêm tin nhắn cũ (TASK-C4.1)
+  const renderListFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.loadingMoreContainer}>
+        <ActivityIndicator size="small" color="#2D6A4F" />
+        <Text style={styles.loadingMoreText}>Đang tải tin nhắn cũ...</Text>
+      </View>
+    );
+  };
+
   // Kiểm tra xem đối phương có đang soạn tin nhắn không (TASK-C3.2)
   const isPartnerTyping = partnerId ? typingUsers.includes(partnerId) : false;
 
@@ -562,7 +639,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           </View>
         </View>
 
-        {/* Danh sách tin nhắn cuộn ngược */}
+        {/* Danh sách tin nhắn cuộn ngược với phân trang Infinite Scroll & tối ưu 60fps (TASK-C4.1 & C4.2) */}
         <FlatList
           data={messages}
           keyExtractor={(item) => item.id}
@@ -572,6 +649,12 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderEmptyChat}
+          ListFooterComponent={renderListFooter}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.2}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={10}
         />
 
         {/* Chỉ báo đối phương đang soạn tin nhắn (TASK-C3.2) */}
@@ -669,6 +752,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     flexGrow: 1,
+  },
+  loadingMoreContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 8,
+  },
+  loadingMoreText: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
   },
   emptyContainer: {
     flex: 1,
