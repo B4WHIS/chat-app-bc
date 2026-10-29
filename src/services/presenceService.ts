@@ -36,7 +36,7 @@ export const setupPresence = (userId: string): (() => void) => {
   // Ngay khi khởi động và user đã đăng nhập, đánh dấu online
   setUserOnlineStatus(userId, true);
 
-  let currentAppState: AppStateStatus = AppState.currentState;
+  let currentAppState: string = AppState.currentState || "active";
 
   const handleAppStateChange = (nextAppState: AppStateStatus) => {
     if (

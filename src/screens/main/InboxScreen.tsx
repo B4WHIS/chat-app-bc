@@ -45,6 +45,7 @@ import {
 import {
   getUserProfile,
   subscribeSuggestedUsers,
+  subscribePartnersPresence,
 } from "../../services/userService";
 
 const AnimatedFlatList = Animated.createAnimatedComponent(
@@ -90,14 +91,14 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     }
   }, []);
 
-  // Lắng nghe người dùng & trạng thái trực tuyến real-time (TASK-C3.1)
+  // Lắng nghe người dùng & trạng thái trực tuyến real-time cho thanh Stories (TASK-C3.1)
   useEffect(() => {
     const unsubscribe = subscribeSuggestedUsers((users) => {
       const userMap: Record<string, boolean> = {};
       users.forEach((u) => {
         userMap[u.id] = Boolean(u.isOnline);
       });
-      onlineUsersRef.current = userMap;
+      onlineUsersRef.current = { ...onlineUsersRef.current, ...userMap };
 
       const mapped: IStoryUser[] = users.map((u) => ({
         id: u.id,
@@ -108,22 +109,66 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
       }));
       setOnlineStories(mapped);
 
-      // Đồng bộ ngay trạng thái isOnline của bạn chat vào danh sách cuộc trò chuyện
-      setConversations((prev) =>
-        prev.map((conv) => {
+      // Cập nhật isOnline cho các cuộc hội thoại nếu có thay đổi thực sự (tránh re-render thừa)
+      setConversations((prev) => {
+        let hasChanged = false;
+        const next = prev.map((conv) => {
           const partnerId = conv.participantIds?.find(
             (id) => id !== auth.currentUser?.uid
           );
+          if (!partnerId || userMap[partnerId] === undefined) return conv;
+          const isOnline = Boolean(userMap[partnerId]);
+          if (conv.isOnline === isOnline) return conv;
+          hasChanged = true;
           return {
             ...conv,
-            isOnline: partnerId ? Boolean(userMap[partnerId]) : conv.isOnline,
+            isOnline,
           };
-        })
-      );
+        });
+        return hasChanged ? next : prev;
+      });
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Lấy danh sách ID bạn chat từ các cuộc hội thoại hiện có
+  const partnerIdsKey = useMemo(() => {
+    const ids = conversations
+      .map((c) => c.participantIds?.find((id) => id !== currentUserId))
+      .filter(Boolean) as string[];
+    return Array.from(new Set(ids)).sort().join(",");
+  }, [conversations, currentUserId]);
+
+  // Lắng nghe trạng thái trực tuyến chính xác của toàn bộ bạn chat trong Inbox (tránh giới hạn limit 30)
+  useEffect(() => {
+    if (!partnerIdsKey) return;
+
+    const partnerIds = partnerIdsKey.split(",").filter(Boolean);
+    const unsubscribe = subscribePartnersPresence(partnerIds, (presenceMap) => {
+      onlineUsersRef.current = { ...onlineUsersRef.current, ...presenceMap };
+
+      setConversations((prev) => {
+        let hasChanged = false;
+        const next = prev.map((conv) => {
+          const partnerId = conv.participantIds?.find(
+            (id) => id !== currentUserId
+          );
+          if (!partnerId || presenceMap[partnerId] === undefined) return conv;
+          const isOnline = Boolean(presenceMap[partnerId]);
+          if (conv.isOnline === isOnline) return conv;
+          hasChanged = true;
+          return {
+            ...conv,
+            isOnline,
+          };
+        });
+        return hasChanged ? next : prev;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [partnerIdsKey, currentUserId]);
 
   // Real-time subscription to Cloud Firestore conversations
   useEffect(() => {

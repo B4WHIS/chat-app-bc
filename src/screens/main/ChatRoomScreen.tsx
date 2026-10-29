@@ -167,8 +167,9 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
 
   // Quản lý trạng thái đang soạn tin (Typing Indicator - TASK-C3.2)
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCurrentlyTypingRef = useRef<boolean>(false);
+  const readTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Lắng nghe real-time typingUsers trong conversation
   useEffect(() => {
@@ -244,12 +245,24 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       (realtimeMessages) => {
         setMessages(realtimeMessages);
 
-        // Nếu có tin nhắn mới từ đối phương gửi tới khi đang ở trong phòng chat, tự động đánh dấu đã đọc
-        const hasUnreadFromPartner = realtimeMessages.some(
-          (m) => m.senderId !== currentUserId && m.status !== "read"
-        );
-        if (hasUnreadFromPartner) {
-          markMessagesAsRead(conversationId, currentUserId);
+        // Lấy danh sách ID các tin nhắn từ đối phương chưa ở trạng thái "read"
+        const unreadPartnerMsgIds = realtimeMessages
+          .filter(
+            (m) =>
+              m.senderId !== currentUserId &&
+              m.status !== "read" &&
+              !m.id.startsWith("temp-")
+          )
+          .map((m) => m.id);
+
+        // Debounce đánh dấu đã đọc khoảng 800ms để tránh ghi Firestore dồn dập
+        if (unreadPartnerMsgIds.length > 0) {
+          if (readTimeoutRef.current) {
+            clearTimeout(readTimeoutRef.current);
+          }
+          readTimeoutRef.current = setTimeout(() => {
+            markMessagesAsRead(conversationId, currentUserId, unreadPartnerMsgIds);
+          }, 800);
         }
       },
       (error) => {
@@ -258,11 +271,17 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     );
 
     return () => {
+      if (readTimeoutRef.current) {
+        clearTimeout(readTimeoutRef.current);
+      }
       unsubscribe();
     };
   }, [conversationId, isDefaultDemo, currentUserId, partnerUser]);
 
   const handleBack = () => {
+    if (readTimeoutRef.current) {
+      clearTimeout(readTimeoutRef.current);
+    }
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }

@@ -9,6 +9,7 @@ import {
   writeBatch,
   query,
   where,
+  limit,
   onSnapshot,
   serverTimestamp,
   increment,
@@ -235,49 +236,64 @@ export const subscribeMessages = (
 };
 
 /**
- * Đánh dấu đã đọc toàn bộ tin nhắn trong cuộc hội thoại (TASK-C3.3 - Seen Receipt)
- * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi
- * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document
+ * Đánh dấu đã đọc tin nhắn trong cuộc hội thoại (TASK-C3.3 - Seen Receipt)
+ * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi (sử dụng unreadMessageIds nếu có, tránh query toàn bộ)
+ * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document sau khi cập nhật tin nhắn thành công
  */
 export const markMessagesAsRead = async (
   conversationId: string,
-  currentUserId: string
+  currentUserId: string,
+  unreadMessageIds?: string[]
 ): Promise<void> => {
   if (!conversationId || !currentUserId) return;
 
   try {
-    // 1. Reset unreadCount trên document conversation
     const convRef = doc(db, "conversations", conversationId);
-    await updateDoc(convRef, {
-      [`unreadCount.${currentUserId}`]: 0,
-    }).catch(() => {
-      // Bỏ qua nếu conversation chưa tồn tại
-    });
+    let targetIds: string[] = [];
 
-    // 2. Lấy các tin nhắn trong cuộc trò chuyện do đối phương gửi mà chưa ở trạng thái "read"
-    const messagesRef = collection(db, "messages");
-    const q = query(
-      messagesRef,
-      where("conversationId", "==", conversationId)
-    );
-    const snap = await getDocs(q);
+    if (Array.isArray(unreadMessageIds)) {
+      targetIds = unreadMessageIds;
+    } else {
+      // Nếu không có unreadMessageIds truyền sẵn, query tối đa 500 tin nhắn của hội thoại
+      const messagesRef = collection(db, "messages");
+      const q = query(
+        messagesRef,
+        where("conversationId", "==", conversationId),
+        limit(500)
+      );
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.senderId !== currentUserId && data.status !== "read") {
+          targetIds.push(docSnap.id);
+        }
+      });
+    }
 
-    if (snap.empty) return;
+    // Nếu không có tin nhắn nào cần đánh dấu, chỉ reset unreadCount
+    if (targetIds.length === 0) {
+      await updateDoc(convRef, {
+        [`unreadCount.${currentUserId}`]: 0,
+      }).catch(() => {});
+      return;
+    }
 
-    const batch = writeBatch(db);
-    let hasUpdates = false;
-
-    snap.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data.senderId !== currentUserId && data.status !== "read") {
-        batch.update(docSnap.ref, { status: "read" });
-        hasUpdates = true;
-      }
-    });
-
-    if (hasUpdates) {
+    // Chia thành các batch tối đa 500 writes theo giới hạn của Firestore
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < targetIds.length; i += CHUNK_SIZE) {
+      const chunk = targetIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((msgId) => {
+        const msgRef = doc(db, "messages", msgId);
+        batch.update(msgRef, { status: "read" });
+      });
       await batch.commit();
     }
+
+    // Reset unreadCount sau khi cập nhật tin nhắn thành công
+    await updateDoc(convRef, {
+      [`unreadCount.${currentUserId}`]: 0,
+    }).catch(() => {});
   } catch (error) {
     console.warn("Lỗi đánh dấu tin nhắn đã đọc (markMessagesAsRead):", error);
   }
