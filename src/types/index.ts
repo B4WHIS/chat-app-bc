@@ -41,6 +41,7 @@ export interface IConversation {
   };
   pinnedBy?: string[]; // Mảng chứa userId đã ghim cuộc trò chuyện này
   mutedBy?: string[]; // Mảng chứa userId đã tắt thông báo cuộc trò chuyện này
+  typingUsers?: string[]; // Mảng chứa userId đang soạn tin nhắn (TASK-C3.2)
   updatedAt: FirestoreDate;
 }
 
@@ -66,6 +67,7 @@ export type MainStackParamList = {
     partnerName?: string;
     partnerAvatar?: string;
     partnerUser?: IUser;
+    conversation?: IConversation;
   };
 };
 

@@ -8,20 +8,40 @@ import {
 import { auth } from "../config/firebase";
 import { NavigationContainer } from "@react-navigation/native";
 import AuthNavigator from "./AuthNavigator";
-
 import MainNavigator from "./MainNavigator";
+import { setupPresence } from "../services/presenceService";
 
 const RootNavigator = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cleanupPresence: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+
+      // Kích hoạt hệ thống trạng thái trực tuyến (TASK-C3.1)
+      if (currentUser?.uid) {
+        if (cleanupPresence) {
+          cleanupPresence();
+        }
+        cleanupPresence = setupPresence(currentUser.uid);
+      } else {
+        if (cleanupPresence) {
+          cleanupPresence();
+          cleanupPresence = null;
+        }
+      }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (cleanupPresence) {
+        cleanupPresence();
+      }
+    };
   }, []);
 
   if (loading) {

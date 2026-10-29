@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -18,13 +18,23 @@ import { Avatar } from "../../components/Avatar";
 import ChatInputToolbar from "../../components/ChatInputToolbar";
 import MessageBubble from "../../components/MessageBubble";
 import ImageViewerModal from "../../components/ImageViewerModal";
+import TypingIndicator from "../../components/TypingIndicator";
 import AppButton from "../../components/AppButton";
 import { auth } from "../../config/firebase";
 import {
   sendMessage,
   subscribeMessages,
+  markMessagesAsRead,
 } from "../../services/messageService";
 import { uploadChatImage } from "../../services/storageService";
+import {
+  subscribeUserPresence,
+  formatLastSeen,
+} from "../../services/presenceService";
+import {
+  setTypingStatus,
+  subscribeTypingUsers,
+} from "../../services/conversationService";
 import { IMessage, IUser, IConversation } from "../../types";
 
 export interface ChatRoomRouteParams {
@@ -123,9 +133,6 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     route?.params?.conversationId ||
     (partnerId ? [currentUserId, partnerId].sort().join("_") : "conv-1");
 
-  // Kiểm tra trạng thái hoạt động của đối phương
-  const isOnline = partnerUser?.isOnline ?? true;
-
   // Nếu là phiên demo chưa đăng nhập thì hiện mock messages, nếu đã đăng nhập thật thì luôn kết nối Firestore Real-time
   const isDefaultDemo =
     !auth.currentUser &&
@@ -137,7 +144,91 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   );
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Lắng nghe tin nhắn thời gian thực qua Cloud Firestore onSnapshot (TASK-C2.2)
+  // Theo dõi trạng thái trực tuyến (isOnline / lastSeen) thời gian thực của đối phương (TASK-C3.1)
+  const [partnerPresence, setPartnerPresence] = useState<{
+    isOnline: boolean;
+    lastSeen?: any;
+  }>({
+    isOnline: partnerUser?.isOnline ?? true,
+    lastSeen: partnerUser?.lastSeen,
+  });
+
+  useEffect(() => {
+    if (!partnerId || isDefaultDemo) return;
+
+    const unsubscribe = subscribeUserPresence(partnerId, (presence) => {
+      setPartnerPresence(presence);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [partnerId, isDefaultDemo]);
+
+  // Quản lý trạng thái đang soạn tin (Typing Indicator - TASK-C3.2)
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isCurrentlyTypingRef = useRef<boolean>(false);
+  const readTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lắng nghe real-time typingUsers trong conversation
+  useEffect(() => {
+    if (!conversationId || isDefaultDemo) return;
+
+    const unsubscribe = subscribeTypingUsers(conversationId, (users) => {
+      setTypingUsers(users);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [conversationId, isDefaultDemo]);
+
+  // Dọn dẹp typing status khi rời khỏi phòng chat hoặc unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (isCurrentlyTypingRef.current && conversationId && !isDefaultDemo) {
+        setTypingStatus(conversationId, currentUserId, false);
+      }
+    };
+  }, [conversationId, currentUserId, isDefaultDemo]);
+
+  // Bắt sự kiện gõ phím trên TextInput với debounce 2s (TASK-C3.2)
+  const handleInputChange = (text: string) => {
+    if (!conversationId || isDefaultDemo) return;
+
+    if (text.length > 0) {
+      if (!isCurrentlyTypingRef.current) {
+        isCurrentlyTypingRef.current = true;
+        setTypingStatus(conversationId, currentUserId, true);
+      }
+
+      // Reset timer nếu user vẫn tiếp tục gõ phím
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Tự động hủy trạng thái đang gõ sau 2 giây ngừng gõ
+      typingTimeoutRef.current = setTimeout(() => {
+        isCurrentlyTypingRef.current = false;
+        setTypingStatus(conversationId, currentUserId, false);
+      }, 2000);
+    } else {
+      // Khi ô nhập tin nhắn trống
+      if (isCurrentlyTypingRef.current) {
+        isCurrentlyTypingRef.current = false;
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        setTypingStatus(conversationId, currentUserId, false);
+      }
+    }
+  };
+
+  // Lắng nghe tin nhắn thời gian thực qua Cloud Firestore onSnapshot (TASK-C2.2 & C3.3)
   useEffect(() => {
     if (!conversationId) return;
 
@@ -146,10 +237,33 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       return;
     }
 
+    // Khi mở phòng chat: Đánh dấu đã đọc và reset unreadCount về 0 (TASK-C3.3)
+    markMessagesAsRead(conversationId, currentUserId);
+
     const unsubscribe = subscribeMessages(
       conversationId,
       (realtimeMessages) => {
         setMessages(realtimeMessages);
+
+        // Lấy danh sách ID các tin nhắn từ đối phương chưa ở trạng thái "read"
+        const unreadPartnerMsgIds = realtimeMessages
+          .filter(
+            (m) =>
+              m.senderId !== currentUserId &&
+              m.status !== "read" &&
+              !m.id.startsWith("temp-")
+          )
+          .map((m) => m.id);
+
+        // Debounce đánh dấu đã đọc khoảng 800ms để tránh ghi Firestore dồn dập
+        if (unreadPartnerMsgIds.length > 0) {
+          if (readTimeoutRef.current) {
+            clearTimeout(readTimeoutRef.current);
+          }
+          readTimeoutRef.current = setTimeout(() => {
+            markMessagesAsRead(conversationId, currentUserId, unreadPartnerMsgIds);
+          }, 800);
+        }
       },
       (error) => {
         console.warn("Lỗi tải tin nhắn real-time:", error);
@@ -157,11 +271,24 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     );
 
     return () => {
+      if (readTimeoutRef.current) {
+        clearTimeout(readTimeoutRef.current);
+      }
       unsubscribe();
     };
   }, [conversationId, isDefaultDemo, currentUserId, partnerUser]);
 
   const handleBack = () => {
+    if (readTimeoutRef.current) {
+      clearTimeout(readTimeoutRef.current);
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    if (isCurrentlyTypingRef.current && conversationId && !isDefaultDemo) {
+      setTypingStatus(conversationId, currentUserId, false);
+    }
+
     if (navigation?.goBack) {
       navigation.goBack();
     } else {
@@ -173,6 +300,15 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   const handleSendMessage = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    // Reset trạng thái đang gõ ngay khi bấm Gửi
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    if (isCurrentlyTypingRef.current && conversationId && !isDefaultDemo) {
+      isCurrentlyTypingRef.current = false;
+      setTypingStatus(conversationId, currentUserId, false);
+    }
 
     // Optimistic UI: hiện ngay tin nhắn với trạng thái 'sending'
     const tempId = `temp-${Date.now()}`;
@@ -321,9 +457,15 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     }
   };
 
+  // Xác định vị trí tin nhắn mới nhất do mình gửi để hiển thị nhãn "Đã xem" (TASK-C3.3)
+  const lastMyMessageIndex = messages.findIndex(
+    (m) => m.senderId === currentUserId
+  );
+
   // Render từng tin nhắn sử dụng component MessageBubble
-  const renderMessageItem = ({ item }: ListRenderItemInfo<IMessage>) => {
+  const renderMessageItem = ({ item, index }: ListRenderItemInfo<IMessage>) => {
     const isMyMessage = item.senderId === currentUserId;
+    const isLastMyMessage = index === lastMyMessageIndex;
 
     return (
       <MessageBubble
@@ -331,6 +473,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
         isMyMessage={isMyMessage}
         senderAvatarUrl={partnerAvatar}
         senderName={partnerName}
+        showSeenLabel={isLastMyMessage}
         onPressImage={(url) => {
           setSelectedImage(url);
         }}
@@ -354,6 +497,9 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     </View>
   );
 
+  // Kiểm tra xem đối phương có đang soạn tin nhắn không (TASK-C3.2)
+  const isPartnerTyping = partnerId ? typingUsers.includes(partnerId) : false;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -372,7 +518,12 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           </TouchableOpacity>
 
           <View style={styles.headerInfo}>
-            <Avatar uri={partnerAvatar} name={partnerName} size={42} />
+            <Avatar
+              uri={partnerAvatar}
+              name={partnerName}
+              size={42}
+              isOnline={partnerPresence.isOnline}
+            />
             <View style={styles.headerTextContainer}>
               <Text style={styles.partnerNameText} numberOfLines={1}>
                 {partnerName}
@@ -381,11 +532,13 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
                 <View
                   style={[
                     styles.onlineDot,
-                    isOnline ? styles.onlineDotActive : styles.onlineDotInactive,
+                    partnerPresence.isOnline ? styles.onlineDotActive : styles.onlineDotInactive,
                   ]}
                 />
                 <Text style={styles.statusText}>
-                  {isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+                  {partnerPresence.isOnline
+                    ? "Đang hoạt động"
+                    : formatLastSeen(partnerPresence.lastSeen)}
                 </Text>
               </View>
             </View>
@@ -421,8 +574,16 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
           ListEmptyComponent={renderEmptyChat}
         />
 
+        {/* Chỉ báo đối phương đang soạn tin nhắn (TASK-C3.2) */}
+        <TypingIndicator
+          visible={isPartnerTyping}
+          partnerName={partnerName}
+          partnerAvatar={partnerAvatar}
+        />
+
         {/* Thanh gõ tin nhắn ChatInputToolbar gắn AppButton ở đáy màn hình */}
         <ChatInputToolbar
+          onChangeText={handleInputChange}
           onSendMessage={handleSendMessage}
           onPickImage={handlePickImage}
         />

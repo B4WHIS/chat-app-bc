@@ -3,10 +3,13 @@ import {
   doc,
   addDoc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
+  writeBatch,
   query,
   where,
+  limit,
   onSnapshot,
   serverTimestamp,
   increment,
@@ -230,4 +233,68 @@ export const subscribeMessages = (
   );
 
   return unsubscribe;
+};
+
+/**
+ * Đánh dấu đã đọc tin nhắn trong cuộc hội thoại (TASK-C3.3 - Seen Receipt)
+ * 1. Cập nhật status: "read" cho các tin nhắn do đối phương gửi (sử dụng unreadMessageIds nếu có, tránh query toàn bộ)
+ * 2. Cập nhật unreadCount[currentUserId]: 0 trên conversation document sau khi cập nhật tin nhắn thành công
+ */
+export const markMessagesAsRead = async (
+  conversationId: string,
+  currentUserId: string,
+  unreadMessageIds?: string[]
+): Promise<void> => {
+  if (!conversationId || !currentUserId) return;
+
+  try {
+    const convRef = doc(db, "conversations", conversationId);
+    let targetIds: string[] = [];
+
+    if (Array.isArray(unreadMessageIds)) {
+      targetIds = unreadMessageIds;
+    } else {
+      // Nếu không có unreadMessageIds truyền sẵn, query tối đa 500 tin nhắn của hội thoại
+      const messagesRef = collection(db, "messages");
+      const q = query(
+        messagesRef,
+        where("conversationId", "==", conversationId),
+        limit(500)
+      );
+      const snap = await getDocs(q);
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.senderId !== currentUserId && data.status !== "read") {
+          targetIds.push(docSnap.id);
+        }
+      });
+    }
+
+    // Nếu không có tin nhắn nào cần đánh dấu, chỉ reset unreadCount
+    if (targetIds.length === 0) {
+      await updateDoc(convRef, {
+        [`unreadCount.${currentUserId}`]: 0,
+      }).catch(() => {});
+      return;
+    }
+
+    // Chia thành các batch tối đa 500 writes theo giới hạn của Firestore
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < targetIds.length; i += CHUNK_SIZE) {
+      const chunk = targetIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((msgId) => {
+        const msgRef = doc(db, "messages", msgId);
+        batch.update(msgRef, { status: "read" });
+      });
+      await batch.commit();
+    }
+
+    // Reset unreadCount sau khi cập nhật tin nhắn thành công
+    await updateDoc(convRef, {
+      [`unreadCount.${currentUserId}`]: 0,
+    }).catch(() => {});
+  } catch (error) {
+    console.warn("Lỗi đánh dấu tin nhắn đã đọc (markMessagesAsRead):", error);
+  }
 };

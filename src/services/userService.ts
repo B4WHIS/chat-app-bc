@@ -1,5 +1,16 @@
 import { db, auth } from "../config/firebase";
-import { collection, doc, getDoc, getDocs, limit, query, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  where,
+  documentId,
+  updateDoc,
+  onSnapshot,
+} from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { IUser } from "../types";
 
@@ -62,6 +73,83 @@ export const getSuggestedUsers = async (): Promise<IUser[]> => {
     console.warn("Lỗi lấy danh sách users Firestore:", err);
     return [];
   }
+};
+
+/**
+ * Lắng nghe danh sách người dùng theo thời gian thực (Real-time Presence System)
+ * Tự động cập nhật isOnline khi user khác mở/đóng app
+ */
+export const subscribeSuggestedUsers = (
+  onUpdate: (users: IUser[]) => void
+): (() => void) => {
+  const currentUid = auth.currentUser?.uid;
+  try {
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, limit(30));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: IUser[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as IUser;
+          if (docSnap.id !== currentUid && data.id !== currentUid) {
+            list.push({ ...data, id: docSnap.id });
+          }
+        });
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn("Lỗi lắng nghe danh sách users Firestore:", err);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn("Exception subscribeSuggestedUsers:", err);
+    return () => {};
+  }
+};
+
+/**
+ * Lắng nghe trạng thái trực tuyến của danh sách bạn chat cụ thể trong Inbox.
+ * Chia nhỏ mảng IDs tối đa 30 phần tử để tuân thủ giới hạn của Firestore `in` query.
+ */
+export const subscribePartnersPresence = (
+  partnerIds: string[],
+  onUpdate: (presenceMap: Record<string, boolean>) => void
+): (() => void) => {
+  const uniqueIds = Array.from(new Set(partnerIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return () => {};
+
+  const unsubscribes: (() => void)[] = [];
+  const presenceState: Record<string, boolean> = {};
+
+  const CHUNK_SIZE = 30;
+  for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where(documentId(), "in", chunk));
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          presenceState[docSnap.id] = Boolean(data?.isOnline);
+        });
+        onUpdate({ ...presenceState });
+      },
+      (err) => {
+        console.warn("Lỗi subscribePartnersPresence:", err);
+      }
+    );
+    unsubscribes.push(unsub);
+  }
+
+  return () => {
+    unsubscribes.forEach((unsub) => unsub());
+  };
 };
 
 /**

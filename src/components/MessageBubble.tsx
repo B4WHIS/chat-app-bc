@@ -18,6 +18,7 @@ export interface MessageBubbleProps {
   senderAvatarUrl?: string;
   senderName?: string;
   onPressImage?: (imageUrl: string) => void;
+  showSeenLabel?: boolean; // Hiển thị nhãn "Đã xem" cạnh giờ gửi tin nhắn cuối (TASK-C3.3)
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -100,6 +101,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   senderAvatarUrl,
   senderName,
   onPressImage,
+  showSeenLabel = false,
 }) => {
   const hasImages = Array.isArray(message.mediaUrls) && message.mediaUrls.length > 0;
   const timeString = formatMessageTime(message.createdAt);
@@ -147,7 +149,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     );
   };
 
-  // Render trạng thái tin nhắn cho tin nhắn của mình
+  // Render trạng thái tin nhắn cho tin nhắn của mình (TASK-C3.3: Seen Receipt)
   const renderStatus = () => {
     if (!isMyMessage) return null;
 
@@ -164,12 +166,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
     if (message.status === "read") {
       return (
-        <Ionicons
-          name="checkmark-done"
-          size={14}
-          color="#93C5FD"
-          style={styles.statusIcon}
-        />
+        <View style={styles.readStatusContainer}>
+          {showSeenLabel && (
+            <Text style={styles.seenLabelText}>Đã xem</Text>
+          )}
+          <Ionicons
+            name="checkmark-done"
+            size={14}
+            color="#93C5FD"
+            style={styles.statusIcon}
+          />
+        </View>
       );
     }
 
@@ -342,6 +349,17 @@ const styles = StyleSheet.create({
   },
   statusIcon: {
     marginLeft: 4,
+  },
+  readStatusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 4,
+  },
+  seenLabelText: {
+    fontSize: 10,
+    color: "#BAE6FD",
+    marginRight: 2,
+    fontWeight: "600",
   },
 });
 
