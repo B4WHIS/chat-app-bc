@@ -36,6 +36,7 @@ import {
   subscribeTypingUsers,
 } from "../../services/conversationService";
 import { IMessage, IUser, IConversation } from "../../types";
+import { setCurrentActiveConversationId } from "../../services/notificationService";
 
 export interface ChatRoomRouteParams {
   conversationId?: string;
@@ -164,6 +165,16 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       unsubscribe();
     };
   }, [partnerId, isDefaultDemo]);
+
+  // Cập nhật ID phòng chat đang mở để tránh hiện popup đè khi đang đọc chat (TASK-B4.2)
+  useEffect(() => {
+    if (conversationId) {
+      setCurrentActiveConversationId(conversationId);
+    }
+    return () => {
+      setCurrentActiveConversationId(null);
+    };
+  }, [conversationId]);
 
   // Quản lý trạng thái đang soạn tin (Typing Indicator - TASK-C3.2)
   const [typingUsers, setTypingUsers] = useState<string[]>([]);

@@ -16,7 +16,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +33,12 @@
           "photosPermission": "Ung dung can quyen truy cap thu vien anh de gui hinh anh va doi anh dai dien."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7e7488e6-5929-4148-8cc1-f5724b0449d2"
+      }
+    },
+    "owner": "binhnguyencnit"
   }
 }
