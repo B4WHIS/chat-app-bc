@@ -67,22 +67,7 @@ export const registerForPushNotificationsAsync = async (): Promise<string | null
   }
 
   try {
-    // 1. Kiểm tra quyền hiện tại
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    // 2. Nếu chưa có quyền, yêu cầu người dùng cấp quyền
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      console.warn("Không được cấp quyền nhận thông báo Push Notification!");
-      return null;
-    }
-
-    // 3. Cấu hình Notification Channel cho Android (bắt buộc từ Android 8.0+)
+    // 1. Cấu hình Notification Channel cho Android (bắt buộc trước khi xin quyền từ Android 13+)
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
         name: "Thông báo tin nhắn",
@@ -91,6 +76,21 @@ export const registerForPushNotificationsAsync = async (): Promise<string | null
         lightColor: "#2D6A4F",
         sound: "default",
       });
+    }
+
+    // 2. Kiểm tra quyền hiện tại
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    // 3. Nếu chưa có quyền, yêu cầu người dùng cấp quyền
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== "granted") {
+      console.warn("Không được cấp quyền nhận thông báo Push Notification!");
+      return null;
     }
 
     // 4. Lấy Expo Push Token
@@ -192,7 +192,16 @@ export const sendPushNotification = async ({
     });
 
     const result = await response.json();
-    return response.ok && !result.errors;
+    if (!response.ok || result.errors) {
+      return false;
+    }
+
+    const ticket = result.data;
+    if (ticket && typeof ticket === "object" && "status" in ticket) {
+      return ticket.status === "ok";
+    }
+
+    return true;
   } catch (error) {
     console.warn("Lỗi gọi Expo Push API:", error);
     return false;

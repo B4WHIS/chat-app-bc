@@ -1,5 +1,5 @@
 import { onAuthStateChanged, User } from "firebase/auth";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -26,6 +26,7 @@ export const navigationRef = createNavigationContainerRef<MainStackParamList>();
 const RootNavigator = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const pendingNotificationRef = useRef<Record<string, unknown> | null>(null);
 
   // Lắng nghe trạng thái đăng nhập & đăng ký Push Notifications (TASK-B4.1)
   useEffect(() => {
@@ -66,18 +67,35 @@ const RootNavigator = () => {
     };
   }, []);
 
+  const navigateToChatRoom = (data: Record<string, unknown>) => {
+    if (data?.conversationId && navigationRef.isReady()) {
+      navigationRef.navigate("ChatRoom", {
+        conversationId: data.conversationId as string,
+        partnerId: (data.partnerId as string) || undefined,
+        partnerName: (data.partnerName as string) || undefined,
+        partnerAvatar: (data.partnerAvatar as string) || undefined,
+      });
+    }
+  };
+
+  // Điều hướng vào phòng chat nếu có thông báo đang chờ sau khi user đăng nhập thành công
+  useEffect(() => {
+    if (user && pendingNotificationRef.current && navigationRef.isReady()) {
+      navigateToChatRoom(pendingNotificationRef.current);
+      pendingNotificationRef.current = null;
+    }
+  }, [user]);
+
   // Xử lý Deep-link mở phòng chat khi người dùng nhấn vào thông báo (TASK-B4.2)
   useEffect(() => {
     if (Platform.OS === "web") return;
 
     const handleNotificationData = (data: Record<string, unknown> | undefined) => {
-      if (data?.conversationId && navigationRef.isReady()) {
-        navigationRef.navigate("ChatRoom", {
-          conversationId: data.conversationId as string,
-          partnerId: (data.partnerId as string) || undefined,
-          partnerName: (data.partnerName as string) || undefined,
-          partnerAvatar: (data.partnerAvatar as string) || undefined,
-        });
+      if (!data?.conversationId) return;
+      if (user && navigationRef.isReady()) {
+        navigateToChatRoom(data);
+      } else {
+        pendingNotificationRef.current = data;
       }
     };
 
@@ -99,7 +117,7 @@ const RootNavigator = () => {
     return () => {
       responseSubscription.remove();
     };
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

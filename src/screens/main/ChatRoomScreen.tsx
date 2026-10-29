@@ -36,6 +36,7 @@ import {
   subscribeTypingUsers,
 } from "../../services/conversationService";
 import { IMessage, IUser, IConversation } from "../../types";
+import { useFocusEffect } from "@react-navigation/native";
 import { setCurrentActiveConversationId } from "../../services/notificationService";
 
 export interface ChatRoomRouteParams {
@@ -166,15 +167,17 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     };
   }, [partnerId, isDefaultDemo]);
 
-  // Cập nhật ID phòng chat đang mở để tránh hiện popup đè khi đang đọc chat (TASK-B4.2)
-  useEffect(() => {
-    if (conversationId) {
-      setCurrentActiveConversationId(conversationId);
-    }
-    return () => {
-      setCurrentActiveConversationId(null);
-    };
-  }, [conversationId]);
+  // Cập nhật ID phòng chat đang mở (theo trạng thái Focus của màn hình) để tránh hiện popup đè khi đang đọc chat (TASK-B4.2)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (conversationId) {
+        setCurrentActiveConversationId(conversationId);
+      }
+      return () => {
+        setCurrentActiveConversationId(null);
+      };
+    }, [conversationId])
+  );
 
   // Quản lý trạng thái đang soạn tin (Typing Indicator - TASK-C3.2)
   const [typingUsers, setTypingUsers] = useState<string[]>([]);

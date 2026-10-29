@@ -32,7 +32,8 @@
         {
           "photosPermission": "Ung dung can quyen truy cap thu vien anh de gui hinh anh va doi anh dai dien."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

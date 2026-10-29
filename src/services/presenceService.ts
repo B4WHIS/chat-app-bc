@@ -1,5 +1,5 @@
 import { AppState, AppStateStatus } from "react-native";
-import { doc, setDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "../config/firebase";
 
 /**
@@ -14,14 +14,10 @@ export const setUserOnlineStatus = async (
 
   try {
     const userDocRef = doc(db, "users", userId);
-    await setDoc(
-      userDocRef,
-      {
-        isOnline,
-        lastSeen: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await updateDoc(userDocRef, {
+      isOnline,
+      lastSeen: serverTimestamp(),
+    });
   } catch (error) {
     console.warn("Lỗi cập nhật trạng thái presence:", error);
   }
@@ -120,6 +116,10 @@ export const formatLastSeen = (lastSeen: any): string => {
   } else if (typeof lastSeen === "string" || typeof lastSeen === "number") {
     date = new Date(lastSeen);
   } else {
+    return "Chưa hoạt động gần đây";
+  }
+
+  if (Number.isNaN(date.getTime())) {
     return "Chưa hoạt động gần đây";
   }
 
