@@ -18,6 +18,7 @@ export interface IUser {
   isOnline: boolean; // Trạng thái online/offline
   lastSeen?: FirestoreDate | null; // Thời điểm cuối cùng mở app
   fcmToken?: string; // Token để sau này làm Push Notification (Sprint 4)
+  pushToken?: string; // Expo Push Token (Sprint 4)
   createdAt: FirestoreDate;
 }
 
