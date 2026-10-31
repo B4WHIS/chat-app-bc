@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { IUser } from "../types";
+import { isUserCurrentlyOnline } from "./presenceService";
 
 /**
  * Tìm kiếm người dùng thật từ collection 'users' trên Cloud Firestore
@@ -94,7 +95,11 @@ export const subscribeSuggestedUsers = (
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as IUser;
           if (docSnap.id !== currentUid && data.id !== currentUid) {
-            list.push({ ...data, id: docSnap.id });
+            list.push({
+              ...data,
+              id: docSnap.id,
+              isOnline: isUserCurrentlyOnline(data?.isOnline, data?.lastSeen),
+            });
           }
         });
         onUpdate(list);
@@ -136,7 +141,10 @@ export const subscribePartnersPresence = (
       (snapshot) => {
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          presenceState[docSnap.id] = Boolean(data?.isOnline);
+          presenceState[docSnap.id] = isUserCurrentlyOnline(
+            data?.isOnline,
+            data?.lastSeen
+          );
         });
         onUpdate({ ...presenceState });
       },

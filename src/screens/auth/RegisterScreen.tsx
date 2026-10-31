@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
   ScrollView,
   TouchableWithoutFeedback,
@@ -40,12 +39,80 @@ import AppButton from "../../components/AppButton";
 import AuthInputField from "../../components/AuthInputField";
 import LoadingOverlay from "../../components/LoadingOverlay";
 
+const getFriendlyAuthErrorMessage = (error: unknown): string => {
+  if (!error) return "Đã xảy ra lỗi, vui lòng thử lại sau.";
+  const err = error as { code?: string; message?: string };
+  const rawMsg = err.message || "";
+  const code = err.code || "";
+  const errStr = `${code} ${rawMsg}`.toLowerCase();
+
+  if (
+    errStr.includes("auth/invalid-credential") ||
+    errStr.includes("auth/wrong-password")
+  ) {
+    return "Email hoặc mật khẩu không chính xác";
+  }
+  if (errStr.includes("auth/user-not-found")) {
+    return "Tài khoản không tồn tại";
+  }
+  if (errStr.includes("auth/email-already-in-use")) {
+    return "Email này đã được đăng ký";
+  }
+  if (errStr.includes("auth/weak-password")) {
+    return "Mật khẩu quá yếu (tối thiểu 6 ký tự)";
+  }
+  if (errStr.includes("auth/network-request-failed")) {
+    return "Lỗi kết nối mạng, vui lòng kiểm tra lại";
+  }
+  if (errStr.includes("auth/invalid-email")) {
+    return "Định dạng email không hợp lệ";
+  }
+  if (errStr.includes("auth/too-many-requests")) {
+    return "Bạn đã thao tác sai quá nhiều lần. Vui lòng đợi trong giây lát!";
+  }
+  if (errStr.includes("auth/user-disabled")) {
+    return "Tài khoản này đã bị tạm khóa";
+  }
+
+  if (rawMsg && !rawMsg.includes("auth/") && !rawMsg.includes("Firebase")) {
+    return rawMsg;
+  }
+
+  return "Đã xảy ra lỗi, vui lòng thử lại sau.";
+};
+
+const validatePassword = (password: string): string | null => {
+  if (!password) {
+    return "Vui lòng nhập mật khẩu.";
+  }
+  if (password.length < 6) {
+    return "Mật khẩu phải chứa ít nhất 6 ký tự.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Mật khẩu phải chứa ít nhất 1 chữ thường (a-z).";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Mật khẩu phải chứa ít nhất 1 chữ hoa (A-Z).";
+  }
+  if (!/\d/.test(password)) {
+    return "Mật khẩu phải chứa ít nhất 1 chữ số (0-9).";
+  }
+  return null;
+};
+
 const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{
+    displayName?: string;
+    email?: string;
+    pass?: string;
+    confirmPassword?: string;
+  }>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   // References for keyboard auto-advance
   const emailRef = useRef<TextInputInstance>(null);
@@ -70,48 +137,84 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     transform: [{ translateY: floatAnim.value }],
   }));
 
-  const handleRegister = async () => {
+    const handleRegister = async () => {
+    Keyboard.dismiss();
+    const newErrors: {
+      displayName?: string;
+      email?: string;
+      pass?: string;
+      confirmPassword?: string;
+    } = {};
+
     if (!displayName.trim()) {
-      Alert.alert("Thông báo", "Vui lòng nhập họ và tên hoặc tên hiển thị của bạn.");
-      return;
+      newErrors.displayName = "Vui lòng nhập họ và tên của bạn.";
     }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email.trim()) {
-      Alert.alert("Thông báo", "Vui lòng nhập địa chỉ email.");
-      return;
+      newErrors.email = "Vui lòng nhập địa chỉ email.";
+    } else if (!emailRegex.test(email.trim())) {
+      newErrors.email = "Định dạng email không hợp lệ.";
     }
-    if (!pass) {
-      Alert.alert("Thông báo", "Vui lòng nhập mật khẩu (tối thiểu 6 ký tự).");
-      return;
+
+    const passError = validatePassword(pass);
+    if (passError) {
+      newErrors.pass = passError;
     }
-    if (pass.length < 6) {
-      Alert.alert("Thông báo", "Mật khẩu phải chứa ít nhất 6 ký tự.");
-      return;
+
+    if (!confirmPassword) {
+      newErrors.confirmPassword = "Vui lòng xác nhận lại mật khẩu.";
+    } else if (pass !== confirmPassword) {
+      newErrors.confirmPassword = "Mật khẩu xác nhận không trùng khớp.";
     }
-    if (pass !== confirmPassword) {
-      Alert.alert("Thông báo", "Mật khẩu xác nhận không trùng khớp. Vui lòng kiểm tra lại.");
+
+    if (Object.keys(newErrors).length > 0) {
+      setFieldErrors(newErrors);
+      setFormError(null);
       return;
     }
 
+    setFieldErrors({});
+    setFormError(null);
     setLoading(true);
+
     try {
       await signUpWithEmail(email.trim(), pass, displayName.trim());
       // Keep loading as true so button spinner continues smoothly until RootNavigator switches screens
     } catch (error: unknown) {
-      const err = error as Error;
       setLoading(false);
-      Alert.alert("Đăng ký thất bại", err.message || "Đã xảy ra lỗi");
+      const friendlyMsg = getFriendlyAuthErrorMessage(error);
+      const err = error as { code?: string; message?: string };
+      const errStr = `${err.code || ""} ${err.message || ""}`.toLowerCase();
+
+      if (errStr.includes("auth/email-already-in-use")) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          email: "Email này đã được đăng ký tài khoản.",
+        }));
+      } else if (errStr.includes("auth/weak-password")) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          pass: "Mật khẩu quá yếu (tối thiểu 6 ký tự gồm cả chữ hoa, thường và số).",
+        }));
+      } else {
+        setFormError(friendlyMsg);
+      }
     }
   };
 
+  // Tạm ẩn tính năng Google Sign-In theo yêu cầu TASK-B5.1
+  /*
   const handleGoogleSignIn = () => {
-    Alert.alert(
-      "Đăng ký với Google",
-      "Tính năng Google Sign-In (OAuth) đang được tích hợp và sẽ khả dụng trong bản cập nhật tới."
-    );
+    // Không dùng Alert.alert
   };
+  */
 
   const isPasswordMatched = Boolean(
-    confirmPassword && pass && confirmPassword === pass && pass.length >= 6
+    confirmPassword &&
+      pass &&
+      confirmPassword === pass &&
+      validatePassword(pass) === null
   );
 
   return (
@@ -165,12 +268,27 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                 entering={FadeInDown.delay(260).duration(400)}
                 style={styles.formContainer}
               >
+                {/* Error Banner nếu có lỗi từ hệ thống */}
+                {Boolean(formError) && (
+                  <View style={styles.formErrorBanner}>
+                    <Ionicons name="alert-circle" size={20} color="#DC2626" style={styles.formErrorIcon} />
+                    <Text style={styles.formErrorText}>{formError}</Text>
+                  </View>
+                )}
+
                 {/* Display Name */}
                 <AuthInputField
                   icon="person-outline"
                   placeholder="Họ và tên hiển thị..."
                   value={displayName}
-                  onChangeText={setDisplayName}
+                  onChangeText={(text) => {
+                    setDisplayName(text);
+                    if (fieldErrors.displayName) {
+                      setFieldErrors((prev) => ({ ...prev, displayName: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.displayName}
                   autoCapitalize="words"
                   textContentType="name"
                   autoComplete="name"
@@ -185,7 +303,14 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                   icon="mail-outline"
                   placeholder="Địa chỉ email..."
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (fieldErrors.email) {
+                      setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.email}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -200,9 +325,16 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                 <AuthInputField
                   ref={passRef}
                   icon="lock-closed-outline"
-                  placeholder="Mật khẩu (tối thiểu 6 ký tự)..."
+                  placeholder="Mật khẩu (hoa, thường, số, ≥6 ký tự)..."
                   value={pass}
-                  onChangeText={setPass}
+                  onChangeText={(text) => {
+                    setPass(text);
+                    if (fieldErrors.pass) {
+                      setFieldErrors((prev) => ({ ...prev, pass: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.pass}
                   isPassword
                   textContentType="newPassword"
                   autoComplete="new-password"
@@ -217,7 +349,14 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                   icon="shield-checkmark-outline"
                   placeholder="Nhập lại mật khẩu..."
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    if (fieldErrors.confirmPassword) {
+                      setFieldErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.confirmPassword}
                   isPassword
                   textContentType="newPassword"
                   autoComplete="new-password"
@@ -227,11 +366,15 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                 />
 
                 {/* Real-time Password Match Feedback */}
-                {Boolean(confirmPassword.length > 0) && (
+                {Boolean(confirmPassword.length > 0 && !fieldErrors.confirmPassword) && (
                   <View style={styles.passwordHintRow}>
                     {isPasswordMatched ? (
                       <Text style={styles.passwordMatchSuccess}>
                         ✓ Mật khẩu xác nhận trùng khớp
+                      </Text>
+                    ) : confirmPassword === pass && validatePassword(pass) !== null ? (
+                      <Text style={styles.passwordMatchError}>
+                        Mật khẩu chưa đủ điều kiện (hoa, thường, số, ≥6 ký tự)
                       </Text>
                     ) : (
                       <Text style={styles.passwordMatchError}>
@@ -249,14 +392,14 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                   disabled={loading}
                 />
 
-                {/* Social Divider */}
+                {/* Tạm ẩn nút Google Sign-In & Social Divider để giao diện Auth hoạt động 100% tính năng thật Email/Password */}
+                {/*
                 <View style={styles.dividerRow}>
                   <View style={styles.dividerLine} />
                   <Text style={styles.dividerText}>Hoặc tiếp tục với</Text>
                   <View style={styles.dividerLine} />
                 </View>
 
-                {/* Google Sign In Button */}
                 <TouchableOpacity
                   style={styles.googleBtn}
                   activeOpacity={0.8}
@@ -265,6 +408,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
                   <Ionicons name="logo-google" size={19} color="#EA4335" style={styles.googleIcon} />
                   <Text style={styles.googleBtnText}>Đăng ký với Google</Text>
                 </TouchableOpacity>
+                */}
 
                 {/* Back to Login */}
                 <TouchableOpacity
@@ -290,6 +434,27 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  formErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  formErrorIcon: {
+    marginRight: 8,
+  },
+  formErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#B91C1C",
+    fontWeight: "600",
+    lineHeight: 18,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",

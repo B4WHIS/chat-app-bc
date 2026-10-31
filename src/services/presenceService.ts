@@ -26,6 +26,7 @@ export const setUserOnlineStatus = async (
 /**
  * Lắng nghe vòng đời ứng dụng (AppState) và tự động cập nhật
  * isOnline: true khi mở app (active), và isOnline: false khi ẩn/đóng app (background/inactive).
+ * Có thêm nhịp tim (Heartbeat) định kỳ 60s để duy trì lastSeen khi người dùng vẫn đang mở app.
  * 
  * @param userId ID của người dùng hiện tại
  * @returns Hàm unsubscribe để hủy lắng nghe và set offline khi logout/unmount
@@ -37,6 +38,24 @@ export const setupPresence = (userId: string): (() => void) => {
   setUserOnlineStatus(userId, true);
 
   let currentAppState: string = AppState.currentState || "active";
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+  const startHeartbeat = () => {
+    if (!heartbeatTimer) {
+      heartbeatTimer = setInterval(() => {
+        setUserOnlineStatus(userId, true);
+      }, 60000);
+    }
+  };
+
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
+
+  startHeartbeat();
 
   const handleAppStateChange = (nextAppState: AppStateStatus) => {
     if (
@@ -45,11 +64,13 @@ export const setupPresence = (userId: string): (() => void) => {
     ) {
       // Ứng dụng quay trở lại foreground
       setUserOnlineStatus(userId, true);
+      startHeartbeat();
     } else if (
       currentAppState === "active" &&
       nextAppState.match(/inactive|background/)
     ) {
       // Ứng dụng bị đưa xuống background hoặc người dùng khóa màn hình
+      stopHeartbeat();
       setUserOnlineStatus(userId, false);
     }
     currentAppState = nextAppState;
@@ -59,6 +80,7 @@ export const setupPresence = (userId: string): (() => void) => {
 
   // Trả về cleanup callback: hủy lắng nghe và đánh dấu offline
   return () => {
+    stopHeartbeat();
     subscription.remove();
     setUserOnlineStatus(userId, false);
   };
@@ -86,7 +108,7 @@ export const subscribeUserPresence = (
       if (docSnap.exists()) {
         const data = docSnap.data();
         onUpdate({
-          isOnline: Boolean(data?.isOnline),
+          isOnline: isUserCurrentlyOnline(data?.isOnline, data?.lastSeen),
           lastSeen: data?.lastSeen,
         });
       } else {
@@ -99,6 +121,37 @@ export const subscribeUserPresence = (
   );
 
   return unsubscribe;
+};
+
+/**
+ * Kiểm tra xem người dùng có thực sự đang trực tuyến hay không.
+ * Điều kiện: isOnline === true VÀ lastSeen cách hiện tại không quá timeoutSeconds (mặc định 180s = 3 phút).
+ */
+export const isUserCurrentlyOnline = (
+  isOnline: boolean | undefined,
+  lastSeen: any,
+  timeoutSeconds: number = 180
+): boolean => {
+  if (!isOnline) return false;
+  if (!lastSeen) return false;
+
+  let date: Date;
+  if (lastSeen.toDate && typeof lastSeen.toDate === "function") {
+    date = lastSeen.toDate();
+  } else if (lastSeen instanceof Date) {
+    date = lastSeen;
+  } else if (typeof lastSeen === "string" || typeof lastSeen === "number") {
+    date = new Date(lastSeen);
+  } else {
+    return false;
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  const diffInSeconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  return diffInSeconds >= 0 && diffInSeconds <= timeoutSeconds;
 };
 
 /**

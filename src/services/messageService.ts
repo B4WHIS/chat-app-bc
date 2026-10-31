@@ -15,6 +15,7 @@ import {
   onSnapshot,
   serverTimestamp,
   increment,
+  documentId,
   QueryDocumentSnapshot,
   DocumentData,
 } from "firebase/firestore";
@@ -22,6 +23,7 @@ import { db } from "../config/firebase";
 import { IMessage, IConversation, IUser } from "../types";
 import { getUserProfile } from "./userService";
 import { sendPushNotification } from "./notificationService";
+import { isUserCurrentlyOnline } from "./presenceService";
 
 /**
  * Chuẩn hóa thời gian sang milliseconds phục vụ sắp xếp tin nhắn
@@ -431,4 +433,137 @@ export const markMessagesAsRead = async (
   } catch (error) {
     console.warn("Lỗi đánh dấu tin nhắn đã đọc (markMessagesAsRead):", error);
   }
+};
+
+
+/**
+ * Lắng nghe danh sách liên hệ đã từng nhắn tin với currentUserId theo thời gian thực (Real-time).
+ * - Chỉ lấy các cuộc trò chuyện đã có ít nhất 1 tin nhắn (lastMessageText hoặc lastMessageTimestamp).
+ * - Lắng nghe collection 'users' để đồng bộ trạng thái isOnline và lastSeen theo thời gian thực.
+ */
+export const subscribeChatContacts = (
+  currentUserId: string,
+  onUpdate: (contacts: IUser[]) => void,
+  onError?: (error: Error) => void
+): (() => void) => {
+  if (!currentUserId) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  const conversationsRef = collection(db, "conversations");
+  const convQuery = query(
+    conversationsRef,
+    where("participantIds", "array-contains", currentUserId)
+  );
+
+  let usersUnsubscribes: (() => void)[] = [];
+  let lastPartnerIdsKey = "";
+
+  const cleanupUsersListeners = () => {
+    usersUnsubscribes.forEach((unsub) => unsub());
+    usersUnsubscribes = [];
+  };
+
+  const convUnsubscribe = onSnapshot(
+    convQuery,
+    (convSnapshot) => {
+      const partnerIdSet = new Set<string>();
+      const fallbackMap: Record<string, { displayName?: string; avatarUrl?: string }> = {};
+
+      convSnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        // Phương án A: Chỉ tính các cuộc trò chuyện đã có ít nhất 1 tin nhắn
+        if (data.lastMessageText || data.lastMessageTimestamp) {
+          const pIds = (data.participantIds as string[]) || [];
+          pIds.forEach((pid) => {
+            if (pid && pid !== currentUserId) {
+              partnerIdSet.add(pid);
+              if (data.participantsMap?.[pid]) {
+                fallbackMap[pid] = data.participantsMap[pid];
+              }
+            }
+          });
+        }
+      });
+
+      const partnerIds = Array.from(partnerIdSet).sort();
+      const partnerIdsKey = partnerIds.join(",");
+
+      // Nếu danh sách đối phương không thay đổi, giữ nguyên listeners collection users
+      if (partnerIdsKey === lastPartnerIdsKey) {
+        return;
+      }
+      lastPartnerIdsKey = partnerIdsKey;
+
+      cleanupUsersListeners();
+
+      if (partnerIds.length === 0) {
+        onUpdate([]);
+        return;
+      }
+
+      const usersMap = new Map<string, IUser>();
+      const emitContacts = () => {
+        const resultList: IUser[] = partnerIds.map((id) => {
+          const userDoc = usersMap.get(id);
+          if (userDoc) return userDoc;
+          return {
+            id,
+            displayName: fallbackMap[id]?.displayName || "Bạn bè",
+            avatarUrl: fallbackMap[id]?.avatarUrl || "",
+            email: "",
+            isOnline: false,
+            lastSeen: null,
+            createdAt: "",
+          } as IUser;
+        });
+
+        // Sắp xếp danh bạ theo tên A-Z
+        resultList.sort((a, b) => {
+          const nameA = (a.displayName || a.email || "").toLowerCase();
+          const nameB = (b.displayName || b.email || "").toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        onUpdate(resultList);
+      };
+
+      const CHUNK_SIZE = 30;
+      for (let i = 0; i < partnerIds.length; i += CHUNK_SIZE) {
+        const chunk = partnerIds.slice(i, i + CHUNK_SIZE);
+        const usersRef = collection(db, "users");
+        const uQuery = query(usersRef, where(documentId(), "in", chunk));
+
+        const unsub = onSnapshot(
+          uQuery,
+          (userSnap) => {
+            userSnap.forEach((uDoc) => {
+              const uData = uDoc.data() as IUser;
+              usersMap.set(uDoc.id, {
+                ...uData,
+                id: uDoc.id,
+                isOnline: isUserCurrentlyOnline(uData?.isOnline, uData?.lastSeen),
+              });
+            });
+            emitContacts();
+          },
+          (err) => {
+            console.warn("Lỗi subscribeChatContacts users chunk:", err);
+            onError?.(err);
+          }
+        );
+        usersUnsubscribes.push(unsub);
+      }
+    },
+    (err) => {
+      console.warn("Lỗi subscribeChatContacts conversations:", err);
+      onError?.(err);
+    }
+  );
+
+  return () => {
+    cleanupUsersListeners();
+    convUnsubscribe();
+  };
 };

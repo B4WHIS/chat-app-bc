@@ -43,10 +43,57 @@ import AppButton from "../../components/AppButton";
 import AuthInputField from "../../components/AuthInputField";
 import LoadingOverlay from "../../components/LoadingOverlay";
 
+const getFriendlyAuthErrorMessage = (error: unknown): string => {
+  if (!error) return "Đã xảy ra lỗi, vui lòng thử lại sau.";
+  const err = error as { code?: string; message?: string };
+  const rawMsg = err.message || "";
+  const code = err.code || "";
+  const errStr = `${code} ${rawMsg}`.toLowerCase();
+
+  if (
+    errStr.includes("auth/invalid-credential") ||
+    errStr.includes("auth/wrong-password")
+  ) {
+    return "Email hoặc mật khẩu không chính xác";
+  }
+  if (errStr.includes("auth/user-not-found")) {
+    return "Tài khoản không tồn tại";
+  }
+  if (errStr.includes("auth/email-already-in-use")) {
+    return "Email này đã được đăng ký";
+  }
+  if (errStr.includes("auth/weak-password")) {
+    return "Mật khẩu quá yếu (tối thiểu 6 ký tự)";
+  }
+  if (errStr.includes("auth/network-request-failed")) {
+    return "Lỗi kết nối mạng, vui lòng kiểm tra lại";
+  }
+  if (errStr.includes("auth/invalid-email")) {
+    return "Định dạng email không hợp lệ";
+  }
+  if (errStr.includes("auth/too-many-requests")) {
+    return "Bạn đã thao tác sai quá nhiều lần. Vui lòng đợi trong giây lát!";
+  }
+  if (errStr.includes("auth/user-disabled")) {
+    return "Tài khoản này đã bị tạm khóa";
+  }
+
+  if (rawMsg && !rawMsg.includes("auth/") && !rawMsg.includes("Firebase")) {
+    return rawMsg;
+  }
+
+  return "Đã xảy ra lỗi, vui lòng thử lại sau.";
+};
+
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    pass?: string;
+  }>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   // References for keyboard auto-advance
   const passInputRef = useRef<TextInputInstance>(null);
@@ -74,33 +121,57 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     transform: [{ translateY: floatAnim.value }],
   }));
 
-  const handleLogin = async () => {
+    const handleLogin = async () => {
+    Keyboard.dismiss();
+    const newErrors: { email?: string; pass?: string } = {};
+
     if (!email.trim()) {
-      Alert.alert("Thông báo", "Vui lòng nhập địa chỉ email của bạn.");
-      return;
+      newErrors.email = "Vui lòng nhập địa chỉ email của bạn.";
     }
     if (!pass) {
-      Alert.alert("Thông báo", "Vui lòng nhập mật khẩu.");
+      newErrors.pass = "Vui lòng nhập mật khẩu.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setFieldErrors(newErrors);
+      setFormError(null);
       return;
     }
 
+    setFieldErrors({});
+    setFormError(null);
     setLoading(true);
+
     try {
       await signInWithEmail(email.trim(), pass);
       // Keep loading as true so button spinner continues smoothly until RootNavigator switches screens
     } catch (error: unknown) {
-      const err = error as Error;
       setLoading(false);
-      Alert.alert("Đăng nhập thất bại", err.message || "Đã xảy ra lỗi");
+      const friendlyMsg = getFriendlyAuthErrorMessage(error);
+      const err = error as { code?: string; message?: string };
+      const errStr = `${err.code || ""} ${err.message || ""}`.toLowerCase();
+
+      if (
+        errStr.includes("auth/invalid-credential") ||
+        errStr.includes("auth/wrong-password") ||
+        errStr.includes("auth/user-not-found")
+      ) {
+        setFormError("Email hoặc mật khẩu không chính xác. Vui lòng thử lại!");
+      } else {
+        setFormError(friendlyMsg);
+      }
     }
   };
 
+  // Tạm ẩn tính năng Google Sign-In theo yêu cầu TASK-B5.1
+  /*
   const handleGoogleSignIn = () => {
     Alert.alert(
       "Đăng nhập Google",
       "Tính năng Google Sign-In (OAuth) đang được tích hợp và sẽ khả dụng trong bản cập nhật tới."
     );
   };
+  */
 
   const handleResetPassword = async () => {
     if (!resetEmail.trim()) {
@@ -118,8 +189,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       setForgotModalVisible(false);
       setResetEmail("");
     } catch (error: unknown) {
-      const err = error as Error;
-      Alert.alert("Lỗi", err.message || "Đã xảy ra lỗi");
+      Alert.alert("Lỗi", getFriendlyAuthErrorMessage(error));
     } finally {
       setResetLoading(false);
     }
@@ -176,12 +246,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 entering={FadeInDown.delay(300).duration(400)}
                 style={styles.formContainer}
               >
+                {/* Error Banner nếu có lỗi đăng nhập */}
+                {Boolean(formError) && (
+                  <View style={styles.formErrorBanner}>
+                    <Ionicons name="alert-circle" size={20} color="#DC2626" style={styles.formErrorIcon} />
+                    <Text style={styles.formErrorText}>{formError}</Text>
+                  </View>
+                )}
+
                 {/* Email Field with Auto-advance to Password */}
                 <AuthInputField
                   icon="mail-outline"
                   placeholder="Nhập địa chỉ email..."
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (fieldErrors.email) {
+                      setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.email}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -198,7 +283,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   icon="lock-closed-outline"
                   placeholder="Nhập mật khẩu..."
                   value={pass}
-                  onChangeText={setPass}
+                  onChangeText={(text) => {
+                    setPass(text);
+                    if (fieldErrors.pass) {
+                      setFieldErrors((prev) => ({ ...prev, pass: undefined }));
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                  error={fieldErrors.pass}
                   isPassword
                   textContentType="password"
                   autoComplete="password"
@@ -226,14 +318,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   disabled={loading}
                 />
 
-                {/* Social Divider */}
+                {/* Tạm ẩn nút Google Sign-In & Social Divider để giao diện Auth hoạt động 100% tính năng thật Email/Password */}
+                {/*
                 <View style={styles.dividerRow}>
                   <View style={styles.dividerLine} />
                   <Text style={styles.dividerText}>Hoặc tiếp tục với</Text>
                   <View style={styles.dividerLine} />
                 </View>
 
-                {/* Google Sign In Button */}
                 <TouchableOpacity
                   style={styles.googleBtn}
                   activeOpacity={0.8}
@@ -242,6 +334,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                   <Ionicons name="logo-google" size={19} color="#EA4335" style={styles.googleIcon} />
                   <Text style={styles.googleBtnText}>Đăng nhập với Google</Text>
                 </TouchableOpacity>
+                */}
 
                 {/* Switch to Register */}
                 <TouchableOpacity
@@ -332,6 +425,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  formErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  formErrorIcon: {
+    marginRight: 8,
+  },
+  formErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#B91C1C",
+    fontWeight: "600",
+    lineHeight: 18,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",

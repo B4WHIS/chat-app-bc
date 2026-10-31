@@ -54,3 +54,5 @@ yarn-error.*
 .claude/
 temp_script.txt
 temp_*.txt
+
+graphify-out/

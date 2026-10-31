@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,15 +14,37 @@ import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Avatar } from "../../components/Avatar";
-import { getSuggestedUsers } from "../../services/userService";
+import { subscribeChatContacts } from "../../services/messageService";
+import { formatLastSeen, isUserCurrentlyOnline } from "../../services/presenceService";
+import { auth } from "../../config/firebase";
 import { IUser } from "../../types";
 
 export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const [contacts, setContacts] = useState<IUser[]>([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getSuggestedUsers().then(setContacts);
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) {
+      setContacts([]);
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribe = subscribeChatContacts(
+      currentUid,
+      (list) => {
+        setContacts(list);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn("Lỗi subscribeChatContacts:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const filtered = contacts.filter((c) => {
@@ -95,62 +118,106 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              Tất cả liên hệ ({filtered.length})
-            </Text>
-          </View>
+          filtered.length > 0 ? (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                Tất cả liên hệ ({filtered.length})
+              </Text>
+            </View>
+          ) : undefined
         }
-        renderItem={({ item, index }) => (
-          <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => handleOpenChat(item)}
-              style={styles.contactCard}
-            >
-              <View style={styles.avatarWrapper}>
-                <Avatar
-                  uri={item.avatarUrl}
-                  name={item.displayName || item.email}
-                  size={50}
-                />
-                {item.isOnline && <View style={styles.onlineDot} />}
-              </View>
+        renderItem={({ item, index }) => {
+          const isOnline = isUserCurrentlyOnline(item.isOnline, item.lastSeen);
+          const statusText = isOnline
+            ? "Đang hoạt động"
+            : formatLastSeen(item.lastSeen);
 
-              <View style={styles.infoWrapper}>
-                <Text style={styles.contactName} numberOfLines={1}>
-                  {item.displayName || "Bạn bè"}
-                </Text>
-                <Text style={styles.contactEmail} numberOfLines={1}>
-                  {item.email}
-                </Text>
-              </View>
-
+          return (
+            <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
               <TouchableOpacity
+                activeOpacity={0.8}
                 onPress={() => handleOpenChat(item)}
-                style={styles.chatIconBtn}
-                activeOpacity={0.7}
+                style={styles.contactCard}
+              >
+                <View style={styles.avatarWrapper}>
+                  <Avatar
+                    uri={item.avatarUrl}
+                    name={item.displayName || item.email}
+                    size={50}
+                  />
+                  {isOnline && <View style={styles.onlineDot} />}
+                </View>
+
+                <View style={styles.infoWrapper}>
+                  <Text style={styles.contactName} numberOfLines={1}>
+                    {item.displayName || "Bạn bè"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.contactStatus,
+                      isOnline && styles.onlineStatusText,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {statusText}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => handleOpenChat(item)}
+                  style={styles.chatIconBtn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="chatbubble-ellipses-outline"
+                    size={20}
+                    color="#2D6A4F"
+                  />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </Animated.View>
+          );
+        }}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2D6A4F" />
+              <Text style={styles.loadingText}>Đang tải danh bạ...</Text>
+            </View>
+          ) : contacts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="people-outline" size={38} color="#2D6A4F" />
+              </View>
+              <Text style={styles.emptyTitle}>Chưa có bạn bè nào</Text>
+              <Text style={styles.emptySubtitle}>
+                Bạn chưa từng nhắn tin với ai. Hãy tìm kiếm người dùng mới để bắt đầu trò chuyện!
+              </Text>
+              <TouchableOpacity
+                style={styles.findFriendsBtn}
+                onPress={() => navigation?.navigate?.("Search")}
+                activeOpacity={0.8}
               >
                 <Ionicons
-                  name="chatbubble-ellipses-outline"
-                  size={20}
-                  color="#2D6A4F"
+                  name="person-add-outline"
+                  size={18}
+                  color="#FFFFFF"
+                  style={{ marginRight: 6 }}
                 />
+                <Text style={styles.findFriendsBtnText}>Tìm kiếm bạn mới</Text>
               </TouchableOpacity>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Ionicons name="people-outline" size={38} color="#2D6A4F" />
             </View>
-            <Text style={styles.emptyTitle}>Chưa có liên hệ nào</Text>
-            <Text style={styles.emptySubtitle}>
-              Khi có người dùng đăng ký tài khoản mới, họ sẽ tự động hiển thị ở
-              đây.
-            </Text>
-          </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="search-outline" size={38} color="#2D6A4F" />
+              </View>
+              <Text style={styles.emptyTitle}>Không tìm thấy kết quả</Text>
+              <Text style={styles.emptySubtitle}>
+                Không tìm thấy ai phù hợp với từ khóa "{search.trim()}".
+              </Text>
+            </View>
+          )
         }
       />
     </SafeAreaView>
@@ -264,10 +331,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1F2937",
   },
-  contactEmail: {
+  contactStatus: {
     fontSize: 13,
     color: "#6B7280",
     marginTop: 2,
+  },
+  onlineStatusText: {
+    color: "#10B981",
+    fontWeight: "600",
   },
   chatIconBtn: {
     width: 38,
@@ -303,6 +374,36 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     textAlign: "center",
     lineHeight: 20,
+  },
+  findFriendsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2D6A4F",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 22,
+    marginTop: 20,
+    shadowColor: "#2D6A4F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  findFriendsBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 80,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#6B7280",
   },
 });
 
