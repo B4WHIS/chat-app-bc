@@ -16,6 +16,11 @@ export interface IUser {
   displayName: string; // Tên hiển thị
   avatarUrl?: string; // Link ảnh đại diện
   isOnline: boolean; // Trạng thái online/offline
+  showOnlineStatus?: boolean; // Cho phép hiển thị trạng thái online (mặc định true)
+  notificationSettings?: {
+    notificationsEnabled: boolean;
+    soundEnabled: boolean;
+  };
   lastSeen?: FirestoreDate | null; // Thời điểm cuối cùng mở app
   fcmToken?: string; // Token để sau này làm Push Notification (Sprint 4)
   pushToken?: string; // Expo Push Token (Sprint 4)
@@ -42,6 +47,8 @@ export interface IConversation {
   };
   pinnedBy?: string[]; // Mảng chứa userId đã ghim cuộc trò chuyện này
   mutedBy?: string[]; // Mảng chứa userId đã tắt thông báo cuộc trò chuyện này
+  hiddenBy?: string[]; // Mảng chứa userId đã ẩn / xoá mềm cuộc trò chuyện này
+  deletedAt?: { [userId: string]: FirestoreDate }; // Thời điểm người dùng xóa cuộc trò chuyện (Phương án 2)
   typingUsers?: string[]; // Mảng chứa userId đang soạn tin nhắn (TASK-C3.2)
   updatedAt: FirestoreDate;
 }

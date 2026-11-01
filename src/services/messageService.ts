@@ -14,6 +14,7 @@ import {
   startAfter,
   onSnapshot,
   serverTimestamp,
+  arrayRemove,
   increment,
   documentId,
   QueryDocumentSnapshot,
@@ -24,6 +25,7 @@ import { IMessage, IConversation, IUser } from "../types";
 import { getUserProfile } from "./userService";
 import { sendPushNotification } from "./notificationService";
 import { isUserCurrentlyOnline } from "./presenceService";
+export { deleteConversation } from "./conversationService";
 
 /**
  * Chuẩn hóa thời gian sang milliseconds phục vụ sắp xếp tin nhắn
@@ -95,6 +97,7 @@ const ensureConversationExists = async (
       },
       pinnedBy: [],
       mutedBy: [],
+      hiddenBy: [],
       updatedAt: serverTimestamp(),
     };
 
@@ -191,6 +194,7 @@ export const sendMessage = async (
     lastMessageSenderId: senderId,
     lastMessageTimestamp: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    hiddenBy: arrayRemove(senderId, partnerId),
   };
 
   if (partnerId) {
@@ -247,7 +251,8 @@ export const subscribeMessages = (
     lastDocSnapshot: QueryDocumentSnapshot<DocumentData> | null
   ) => void,
   onError?: (error: Error) => void,
-  limitCount: number = 20
+  limitCount: number = 20,
+  currentUserId?: string
 ): (() => void) => {
   if (!conversationId) {
     onUpdate([], null);
@@ -261,6 +266,18 @@ export const subscribeMessages = (
     where("conversationId", "==", conversationId),
     limit(limitCount)
   );
+
+  let deletedCutOff = 0;
+  if (currentUserId) {
+    getDoc(doc(db, "conversations", conversationId)).then((convSnap) => {
+      if (convSnap.exists()) {
+        const cData = convSnap.data();
+        if (cData.deletedAt && cData.deletedAt[currentUserId]) {
+          deletedCutOff = normalizeTimestamp(cData.deletedAt[currentUserId]);
+        }
+      }
+    }).catch(() => {});
+  }
 
   const unsubscribe = onSnapshot(
     q,
@@ -285,7 +302,10 @@ export const subscribeMessages = (
 
       // Lấy snapshot của tin nhắn cũ nhất trong batch này để phục vụ phân trang startAfter
       const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
-      onUpdate(list, lastDoc);
+      const filteredList = deletedCutOff > 0
+        ? list.filter((m) => normalizeTimestamp(m.createdAt) > deletedCutOff)
+        : list;
+      onUpdate(filteredList, lastDoc);
     },
     (error) => {
       console.error("subscribeMessages error:", error);
@@ -458,7 +478,7 @@ export const subscribeChatContacts = (
   );
 
   let usersUnsubscribes: (() => void)[] = [];
-  let lastPartnerIdsKey = "";
+  let lastPartnerIdsKey: string | null = null;
 
   const cleanupUsersListeners = () => {
     usersUnsubscribes.forEach((unsub) => unsub());
@@ -491,7 +511,7 @@ export const subscribeChatContacts = (
       const partnerIdsKey = partnerIds.join(",");
 
       // Nếu danh sách đối phương không thay đổi, giữ nguyên listeners collection users
-      if (partnerIdsKey === lastPartnerIdsKey) {
+      if (lastPartnerIdsKey !== null && partnerIdsKey === lastPartnerIdsKey) {
         return;
       }
       lastPartnerIdsKey = partnerIdsKey;
@@ -528,6 +548,9 @@ export const subscribeChatContacts = (
 
         onUpdate(resultList);
       };
+
+      // Phát danh sách ban đầu từ participantsMap ngay lập tức
+      emitContacts();
 
       const CHUNK_SIZE = 30;
       for (let i = 0; i < partnerIds.length; i += CHUNK_SIZE) {

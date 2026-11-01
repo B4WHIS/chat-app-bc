@@ -2,8 +2,86 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
+
+/**
+ * Cấu hình thông báo & âm thanh
+ */
+export interface INotificationSettings {
+  notificationsEnabled: boolean;
+  soundEnabled: boolean;
+}
+
+const NOTIFICATION_SETTINGS_KEY = "@chat_app_notification_settings";
+
+let currentNotificationSettings: INotificationSettings = {
+  notificationsEnabled: true,
+  soundEnabled: true,
+};
+
+/**
+ * Lấy cấu hình thông báo & âm thanh (từ AsyncStorage hoặc bộ nhớ đệm)
+ */
+export const getNotificationSettings = async (): Promise<INotificationSettings> => {
+  try {
+    const raw = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
+    if (raw) {
+      currentNotificationSettings = { ...currentNotificationSettings, ...JSON.parse(raw) };
+    }
+  } catch (err) {
+    console.warn("Lỗi đọc cài đặt thông báo:", err);
+  }
+  return currentNotificationSettings;
+};
+
+// Khởi chạy đọc cấu hình ngay lập tức
+getNotificationSettings();
+
+/**
+ * Cập nhật cấu hình thông báo & âm thanh (Lưu cả AsyncStorage và Cloud Firestore)
+ */
+export const updateNotificationSettings = async (
+  userId: string,
+  settings: Partial<INotificationSettings>
+): Promise<INotificationSettings> => {
+  currentNotificationSettings = {
+    ...currentNotificationSettings,
+    ...settings,
+  };
+
+  try {
+    await AsyncStorage.setItem(
+      NOTIFICATION_SETTINGS_KEY,
+      JSON.stringify(currentNotificationSettings)
+    );
+  } catch (err) {
+    console.warn("Lỗi lưu cài đặt thông báo local:", err);
+  }
+
+  if (userId) {
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, {
+        notificationSettings: currentNotificationSettings,
+        ...(settings.notificationsEnabled === false ? { pushToken: "" } : {}),
+      });
+
+      if (settings.notificationsEnabled === true && Platform.OS !== "web") {
+        registerForPushNotificationsAsync().then((token) => {
+          if (token && userId) {
+            updateUserPushToken(userId, token);
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("Lỗi lưu cài đặt thông báo Firestore:", err);
+    }
+  }
+
+  return currentNotificationSettings;
+};
 
 /**
  * Lưu trữ ID phòng chat người dùng đang mở trực tiếp để tránh hiện popup đè khi đang đọc chat
@@ -24,10 +102,21 @@ export const getCurrentActiveConversationId = (): string | null => {
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
+      // 1. Nếu người dùng tắt thông báo trong Cài đặt
+      if (!currentNotificationSettings.notificationsEnabled) {
+        return {
+          shouldShowAlert: false,
+          shouldShowBanner: false,
+          shouldShowList: false,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        };
+      }
+
       const data = notification?.request?.content?.data;
       const incomingConvId = data?.conversationId as string | undefined;
 
-      // Nếu đang mở đúng phòng chat của người gửi tin nhắn này -> không hiện banner
+      // 2. Nếu đang mở đúng phòng chat của người gửi tin nhắn này -> không hiện banner
       const isCurrentlyViewingThisChat =
         Boolean(currentActiveConversationId) &&
         Boolean(incomingConvId) &&
@@ -43,12 +132,12 @@ if (Platform.OS !== "web") {
         };
       }
 
-      // Còn lại: đang ở trong app (màn hình khác, hoặc đang chat với người khác) -> hiện thông báo đầy đủ
+      // 3. Còn lại: hiện thông báo theo cài đặt âm thanh
       return {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: true,
+        shouldPlaySound: currentNotificationSettings.soundEnabled,
         shouldSetBadge: false,
       };
     },
@@ -167,7 +256,6 @@ export const sendPushNotification = async ({
   try {
     if (Platform.OS === "web") {
       // Trên Web browser, exp.host không có header CORS cho phép domain localhost.
-      // Sử dụng mode: 'no-cors' kết hợp Content-Type: 'text/plain' để trình duyệt gửi request trực tiếp mà không bị chặn CORS.
       await fetch("https://exp.host/--/api/v2/push/send", {
         method: "POST",
         mode: "no-cors",

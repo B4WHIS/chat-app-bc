@@ -44,6 +44,7 @@ import {
 } from "../../services/cacheService";
 import { IMessage, IUser, IConversation } from "../../types";
 import { useFocusEffect } from "@react-navigation/native";
+import { useTheme } from "../../context/ThemeContext";
 import { setCurrentActiveConversationId } from "../../services/notificationService";
 
 export interface ChatRoomRouteParams {
@@ -123,9 +124,11 @@ const INITIAL_MESSAGES: IMessage[] = [
 ];
 
 export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
+
   navigation,
   route,
 }) => {
+  const { colors, isDark } = useTheme();
   // Lấy thông tin partnerUser và conversationId từ navigation route params (TASK-C2.1 & C2.2)
   const partnerUser = route?.params?.partnerUser;
   const partnerId =
@@ -315,7 +318,8 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
       (error) => {
         console.warn("Lỗi tải tin nhắn real-time:", error);
       },
-      20
+      20,
+      currentUserId
     );
 
     return () => {
@@ -565,8 +569,8 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   const renderEmptyChat = () => (
     <View style={styles.emptyContainer}>
       <Avatar uri={partnerAvatar} name={partnerName} size={68} />
-      <Text style={styles.emptyTitle}>{partnerName}</Text>
-      <Text style={styles.emptySubtitle}>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>{partnerName}</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
         {partnerUser?.email ? `${partnerUser.email} • ` : ""}Hãy gửi lời chào đầu tiên để bắt đầu trò chuyện!
       </Text>
       <AppButton
@@ -582,7 +586,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
     if (!loadingMore) return null;
     return (
       <View style={styles.loadingMoreContainer}>
-        <ActivityIndicator size="small" color="#2D6A4F" />
+        <ActivityIndicator size="small" color={colors.primary} />
         <Text style={styles.loadingMoreText}>Đang tải tin nhắn cũ...</Text>
       </View>
     );
@@ -592,20 +596,20 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
   const isPartnerTyping = partnerId ? typingUsers.includes(partnerId) : false;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.card }]}>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: colors.background }]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         {/* Header màn hình phòng chat (Avatar, Tên đối phương, Nút Back) */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.cardBorder }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleBack}
             activeOpacity={0.7}
             accessibilityLabel="Quay lại"
           >
-            <Ionicons name="chevron-back" size={28} color="#1F2937" />
+            <Ionicons name="chevron-back" size={28} color={colors.text} />
           </TouchableOpacity>
 
           <View style={styles.headerInfo}>
@@ -616,7 +620,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
               isOnline={partnerPresence.isOnline}
             />
             <View style={styles.headerTextContainer}>
-              <Text style={styles.partnerNameText} numberOfLines={1}>
+              <Text style={[styles.partnerNameText, { color: colors.text }]} numberOfLines={1}>
                 {partnerName}
               </Text>
               <View style={styles.statusRow}>
@@ -626,7 +630,7 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
                     partnerPresence.isOnline ? styles.onlineDotActive : styles.onlineDotInactive,
                   ]}
                 />
-                <Text style={styles.statusText}>
+                <Text style={[styles.statusText, { color: colors.subtext }]}>
                   {partnerPresence.isOnline
                     ? "Đang hoạt động"
                     : formatLastSeen(partnerPresence.lastSeen)}
@@ -641,14 +645,14 @@ export const ChatRoomScreen: React.FC<ChatRoomScreenProps> = ({
               activeOpacity={0.7}
               onPress={() => Alert.alert("Cuộc gọi thoại", `Đang kết nối tới ${partnerName}...`)}
             >
-              <Ionicons name="call-outline" size={22} color="#2D6A4F" />
+              <Ionicons name="call-outline" size={22} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerIconBtn}
               activeOpacity={0.7}
               onPress={() => Alert.alert("Thông tin", `Hội thoại ID: ${conversationId}`)}
             >
-              <Ionicons name="information-circle-outline" size={24} color="#2D6A4F" />
+              <Ionicons name="information-circle-outline" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </View>

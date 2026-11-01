@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "./Avatar";
 import { IMessage } from "../types";
+import { useTheme } from "../context/ThemeContext";
 
 export interface MessageBubbleProps {
   message: IMessage;
@@ -96,6 +97,7 @@ const ImageWithLoader: React.FC<ImageWithLoaderProps> = ({
 };
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
+
   message,
   isMyMessage,
   senderAvatarUrl,
@@ -103,6 +105,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onPressImage,
   showSeenLabel = false,
 }) => {
+  const { colors, isDark } = useTheme();
   const hasImages = Array.isArray(message.mediaUrls) && message.mediaUrls.length > 0;
   const timeString = formatMessageTime(message.createdAt);
 
@@ -209,7 +212,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       <View
         style={[
           styles.bubble,
-          isMyMessage ? styles.myBubble : styles.partnerBubble,
+          isMyMessage ? [styles.myBubble, { backgroundColor: colors.primary }] : [styles.partnerBubble, isDark && { backgroundColor: "#1F2937" }],
         ]}
       >
         {/* Render ảnh nếu có */}
@@ -220,7 +223,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           <Text
             style={[
               styles.text,
-              isMyMessage ? styles.myText : styles.partnerText,
+              isMyMessage ? styles.myText : [styles.partnerText, isDark && { color: "#F9FAFB" }],
               hasImages && styles.textWithImage,
             ]}
           >
@@ -234,7 +237,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <Text
               style={[
                 styles.timeText,
-                isMyMessage ? styles.myTimeText : styles.partnerTimeText,
+                isMyMessage ? styles.myTimeText : [styles.partnerTimeText, isDark && { color: "#9CA3AF" }],
               ]}
             >
               {timeString}

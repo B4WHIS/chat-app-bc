@@ -10,6 +10,7 @@ import {
   documentId,
   updateDoc,
   onSnapshot,
+  serverTimestamp,
 } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { IUser } from "../types";
@@ -78,7 +79,7 @@ export const getSuggestedUsers = async (): Promise<IUser[]> => {
 
 /**
  * Lắng nghe danh sách người dùng theo thời gian thực (Real-time Presence System)
- * Tự động cập nhật isOnline khi user khác mở/đóng app
+ * Tự động cập nhật isOnline khi user khác mở/đóng app (tôn trọng showOnlineStatus)
  */
 export const subscribeSuggestedUsers = (
   onUpdate: (users: IUser[]) => void
@@ -95,10 +96,11 @@ export const subscribeSuggestedUsers = (
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as IUser;
           if (docSnap.id !== currentUid && data.id !== currentUid) {
+            const canShow = data?.showOnlineStatus !== false;
             list.push({
               ...data,
               id: docSnap.id,
-              isOnline: isUserCurrentlyOnline(data?.isOnline, data?.lastSeen),
+              isOnline: canShow ? isUserCurrentlyOnline(data?.isOnline, data?.lastSeen) : false,
             });
           }
         });
@@ -119,6 +121,7 @@ export const subscribeSuggestedUsers = (
 /**
  * Lắng nghe trạng thái trực tuyến của danh sách bạn chat cụ thể trong Inbox.
  * Chia nhỏ mảng IDs tối đa 30 phần tử để tuân thủ giới hạn của Firestore `in` query.
+ * Tôn trọng showOnlineStatus của đối phương.
  */
 export const subscribePartnersPresence = (
   partnerIds: string[],
@@ -141,10 +144,10 @@ export const subscribePartnersPresence = (
       (snapshot) => {
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          presenceState[docSnap.id] = isUserCurrentlyOnline(
-            data?.isOnline,
-            data?.lastSeen
-          );
+          const canShow = data?.showOnlineStatus !== false;
+          presenceState[docSnap.id] = canShow
+            ? isUserCurrentlyOnline(data?.isOnline, data?.lastSeen)
+            : false;
         });
         onUpdate({ ...presenceState });
       },
@@ -196,6 +199,78 @@ export const updateUserAvatar = async (uid: string, photoURL: string): Promise<v
     });
   } catch (error) {
     console.error("Lỗi cập nhật avatar:", error);
+    throw error;
+  }
+};
+
+/**
+ * Lắng nghe thông tin người dùng theo thời gian thực từ collection 'users'
+ */
+export const subscribeUserProfile = (
+  uid: string,
+  onUpdate: (user: IUser | null) => void
+): (() => void) => {
+  if (!uid) return () => {};
+  const userDocRef = doc(db, 'users', uid);
+  return onSnapshot(
+    userDocRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        onUpdate({ ...(docSnap.data() as IUser), id: docSnap.id });
+      } else {
+        onUpdate(null);
+      }
+    },
+    (error) => {
+      console.warn('Lỗi subscribeUserProfile:', error);
+    }
+  );
+};
+
+/**
+ * Cập nhật tên hiển thị của người dùng:
+ * 1. Cập nhật displayName trong Firebase Auth
+ * 2. Cập nhật displayName trong Firestore doc 'users/{uid}'
+ */
+export const updateUserDisplayName = async (
+  uid: string,
+  displayName: string
+): Promise<void> => {
+  const trimmedName = displayName.trim();
+  if (!uid || !trimmedName) return;
+
+  try {
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      await updateProfile(auth.currentUser, { displayName: trimmedName });
+    }
+
+    const userDocRef = doc(db, 'users', uid);
+    await updateDoc(userDocRef, {
+      displayName: trimmedName,
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật tên hiển thị:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cập nhật cài đặt quyền riêng tư (ẩn/hiện trạng thái hoạt động trực tuyến)
+ */
+export const updateOnlinePrivacyStatus = async (
+  uid: string,
+  showOnlineStatus: boolean
+): Promise<void> => {
+  if (!uid) return;
+  try {
+    const userDocRef = doc(db, 'users', uid);
+    await updateDoc(userDocRef, {
+      showOnlineStatus,
+      isOnline: showOnlineStatus ? true : false,
+      lastSeen: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật cài đặt quyền riêng tư:', error);
     throw error;
   }
 };

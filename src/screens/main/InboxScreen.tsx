@@ -44,15 +44,17 @@ import {
 } from "../../services/conversationService";
 import {
   getUserProfile,
-  subscribeSuggestedUsers,
   subscribePartnersPresence,
 } from "../../services/userService";
+import { subscribeChatContacts } from "../../services/messageService";
+import { useTheme } from "../../context/ThemeContext";
 
 const AnimatedFlatList = Animated.createAnimatedComponent(
   FlatList<ExtendedConversation>
 );
 
 export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
+  const { colors, isDark } = useTheme();
   const currentUserId = auth.currentUser?.uid || "current_user";
   const [currentUserProfile, setCurrentUserProfile] = useState<{
     displayName: string;
@@ -91,46 +93,58 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     }
   }, []);
 
-  // Lắng nghe người dùng & trạng thái trực tuyến real-time cho thanh Stories (TASK-C3.1)
+  // Lắng nghe bạn chat & trạng thái trực tuyến real-time cho thanh Stories
   useEffect(() => {
-    const unsubscribe = subscribeSuggestedUsers((users) => {
-      const userMap: Record<string, boolean> = {};
-      users.forEach((u) => {
-        userMap[u.id] = Boolean(u.isOnline);
-      });
-      onlineUsersRef.current = { ...onlineUsersRef.current, ...userMap };
+    const activeUid = auth.currentUser?.uid || currentUserId;
+    if (!activeUid) {
+      setOnlineStories([]);
+      return;
+    }
 
-      const mapped: IStoryUser[] = users.map((u) => ({
-        id: u.id,
-        name: u.displayName || u.email.split("@")[0],
-        avatarUrl: u.avatarUrl,
-        isOnline: u.isOnline,
-        hasStory: false,
-      }));
-      setOnlineStories(mapped);
-
-      // Cập nhật isOnline cho các cuộc hội thoại nếu có thay đổi thực sự (tránh re-render thừa)
-      setConversations((prev) => {
-        let hasChanged = false;
-        const next = prev.map((conv) => {
-          const partnerId = conv.participantIds?.find(
-            (id) => id !== auth.currentUser?.uid
-          );
-          if (!partnerId || userMap[partnerId] === undefined) return conv;
-          const isOnline = Boolean(userMap[partnerId]);
-          if (conv.isOnline === isOnline) return conv;
-          hasChanged = true;
-          return {
-            ...conv,
-            isOnline,
-          };
+    const unsubscribe = subscribeChatContacts(
+      activeUid,
+      (contactList) => {
+        const userMap: Record<string, boolean> = {};
+        contactList.forEach((u) => {
+          userMap[u.id] = Boolean(u.isOnline);
         });
-        return hasChanged ? next : prev;
-      });
-    });
+        onlineUsersRef.current = { ...onlineUsersRef.current, ...userMap };
+
+        const mapped: IStoryUser[] = contactList.map((u) => ({
+          id: u.id,
+          name: u.displayName || u.email?.split("@")[0] || "Bạn bè",
+          avatarUrl: u.avatarUrl,
+          isOnline: Boolean(u.isOnline),
+          hasStory: false,
+        }));
+        setOnlineStories(mapped);
+
+        // Cập nhật isOnline cho các cuộc hội thoại nếu có thay đổi thực sự (tránh re-render thừa)
+        setConversations((prev) => {
+          let hasChanged = false;
+          const next = prev.map((conv) => {
+            const partnerId = conv.participantIds?.find(
+              (id) => id !== activeUid
+            );
+            if (!partnerId || userMap[partnerId] === undefined) return conv;
+            const isOnline = Boolean(userMap[partnerId]);
+            if (conv.isOnline === isOnline) return conv;
+            hasChanged = true;
+            return {
+              ...conv,
+              isOnline,
+            };
+          });
+          return hasChanged ? next : prev;
+        });
+      },
+      (err) => {
+        console.warn("Lỗi subscribeChatContacts cho Stories:", err);
+      }
+    );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserId]);
 
   // Lấy danh sách ID bạn chat từ các cuộc hội thoại hiện có
   const partnerIdsKey = useMemo(() => {
@@ -179,7 +193,9 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     const unsubscribe = subscribeConversations(
       currentUid,
       (firestoreList) => {
-        const mapped: ExtendedConversation[] = firestoreList.map((conv) => {
+        const mapped: ExtendedConversation[] = firestoreList
+          .filter((conv) => !conv.hiddenBy?.includes(currentUid))
+          .map((conv) => {
           const partnerId = conv.participantIds?.find(
             (id) => id !== currentUid
           );
@@ -235,8 +251,28 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
 
   // Filter conversations
   const filteredConversations = useMemo(() => {
+    const activeUid = auth.currentUser?.uid || currentUserId;
     return conversations
       .filter((conv) => {
+        if (activeUid && conv.hiddenBy?.includes(activeUid)) {
+          return false;
+        }
+        if (activeUid && conv.deletedAt && conv.deletedAt[activeUid]) {
+          const getMs = (val: any): number => {
+            if (!val) return 0;
+            if (typeof val === "number") return val;
+            if (val instanceof Date) return val.getTime();
+            if (typeof val === "string") return new Date(val).getTime() || 0;
+            if (typeof val === "object" && typeof val.toMillis === "function") return val.toMillis();
+            if (typeof val === "object" && typeof val.toDate === "function") return val.toDate().getTime();
+            return 0;
+          };
+          const delTime = getMs(conv.deletedAt[activeUid]);
+          const lastMsgTime = getMs(conv.lastMessageTimestamp || conv.updatedAt);
+          if (lastMsgTime <= delTime) {
+            return false;
+          }
+        }
         // Search query
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
@@ -322,26 +358,38 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   );
 
   const handleDelete = useCallback((target: ExtendedConversation) => {
-    Alert.alert(
-      "Xóa cuộc trò chuyện",
-      `Bạn có chắc chắn muốn xóa tin nhắn với "${target.partnerName}" không?`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: async () => {
-            // Optimistic update
-            setConversations((prev) => prev.filter((c) => c.id !== target.id));
-            try {
-              await deleteConversation(target.id, currentUserId);
-            } catch (err) {
-              console.warn("Lỗi xóa hội thoại Firestore:", err);
-            }
+    const doDelete = async () => {
+      const activeUid = auth.currentUser?.uid || currentUserId;
+      // Optimistic update
+      setConversations((prev) => prev.filter((c) => c.id !== target.id));
+      try {
+        await deleteConversation(target.id, activeUid);
+      } catch (err) {
+        console.warn("Lỗi xóa hội thoại Firestore:", err);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = typeof window !== "undefined" && window.confirm
+        ? window.confirm(`Bạn có chắc chắn muốn xóa tin nhắn với "${target.partnerName}" không?`)
+        : true;
+      if (confirmed) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Xóa cuộc trò chuyện",
+        `Bạn có chắc chắn muốn xóa tin nhắn với "${target.partnerName}" không?`,
+        [
+          { text: "Hủy", style: "cancel" },
+          {
+            text: "Xóa",
+            style: "destructive",
+            onPress: doDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   }, [currentUserId]);
 
   const handleChatPress = useCallback(
@@ -435,7 +483,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
           />
         )}
         <View style={styles.sectionDividerRow}>
-          <Text style={styles.sectionTitle}>
+          <Text style={[styles.sectionTitle, { color: colors.primary }]}>
             {activeFilter === "pinned"
               ? "Tin nhắn đã ghim"
               : activeFilter === "unread"
@@ -444,7 +492,7 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
               ? "Nhóm chat"
               : "Cuộc trò chuyện"}
           </Text>
-          <Text style={styles.conversationCount}>
+          <Text style={[styles.conversationCount, { color: colors.subtext }]}>
             {filteredConversations.length} cuộc trò chuyện
           </Text>
         </View>
@@ -461,22 +509,22 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const renderEmptyComponent = () => {
     return (
       <View style={styles.emptyContainer}>
-        <View style={styles.emptyIconCircle}>
+        <View style={[styles.emptyIconCircle, isDark && { backgroundColor: "#1F2937" }]}>
           <Ionicons name="chatbubbles-outline" size={40} color="#2D6A4F" />
         </View>
-        <Text style={styles.emptyTitle}>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>
           {searchQuery
             ? "Không tìm thấy kết quả"
             : "Chưa có cuộc trò chuyện nào"}
         </Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
           {searchQuery
             ? "Không tìm thấy kết quả phù hợp với từ khóa của bạn."
             : "Bắt đầu kết nối và trò chuyện cùng bạn bè ngay hôm nay!"}
         </Text>
         {!searchQuery && (
           <TouchableOpacity
-            style={styles.emptyCtaBtn}
+            style={[styles.emptyCtaBtn, { backgroundColor: colors.primary }]}
             onPress={handleComposePress}
             activeOpacity={0.8}
           >
@@ -489,10 +537,10 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
       {/* Botanical Glassmorphic Gradient Backdrop */}
       <LinearGradient
-        colors={["#EAF5EE", "#F6FAF7", "#FFFFFF"]}
+        colors={colors.gradient}
         style={styles.gradientBg}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 0.35 }}
@@ -534,8 +582,8 @@ export const InboxScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#2D6A4F"
-            colors={["#2D6A4F", "#52B788"]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       />

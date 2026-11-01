@@ -5,7 +5,6 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
   onSnapshot,
@@ -13,8 +12,9 @@ import {
   arrayRemove,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../config/firebase";
+import { db, auth } from "../config/firebase";
 import { IConversation, IUser } from "../types";
+import { clearCachedMessages } from "./cacheService";
 
 /**
  * Tạo ID cuộc hội thoại chuẩn hóa [uid1, uid2].sort().join('_') để chống trùng lặp
@@ -66,6 +66,7 @@ export const getOrCreateConversation = async (
     },
     pinnedBy: [],
     mutedBy: [],
+    hiddenBy: [],
     updatedAt: new Date().toISOString(),
   };
 
@@ -108,6 +109,7 @@ export const createConversationOnFirstMessage = async (
     },
     pinnedBy: [],
     mutedBy: [],
+    hiddenBy: [],
     updatedAt: serverTimestamp(),
   };
 
@@ -134,11 +136,6 @@ export const subscribeConversations = (
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const list: IConversation[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...(docSnap.data() as any) });
-        });
-
         const getTimestampMillis = (val: any): number => {
           if (!val) return 0;
           if (typeof val === "number") return val;
@@ -152,6 +149,24 @@ export const subscribeConversations = (
           }
           return 0;
         };
+
+        const list: IConversation[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          // Lọc bỏ nếu đã ẩn
+          if (data.hiddenBy && Array.isArray(data.hiddenBy) && data.hiddenBy.includes(userId)) {
+            return;
+          }
+          // Lọc bỏ nếu đã xóa (deletedAt) và chưa có tin nhắn mới sau thời điểm xóa
+          if (data.deletedAt && data.deletedAt[userId]) {
+            const deletedTime = getTimestampMillis(data.deletedAt[userId]);
+            const lastMsgTime = getTimestampMillis(data.lastMessageTimestamp || data.updatedAt);
+            if (lastMsgTime <= deletedTime) {
+              return;
+            }
+          }
+          list.push({ id: docSnap.id, ...data });
+        });
 
         // Sắp xếp theo updatedAt mới nhất lên đầu
         list.sort((a, b) => {
@@ -222,25 +237,24 @@ export const markConversationAsRead = async (
 };
 
 /**
- * Xóa cuộc trò chuyện khỏi Firestore
+ * Xóa 1 chiều (Soft Delete): Ẩn cuộc trò chuyện phía người dùng (thêm userId vào hiddenBy)
  */
 export const deleteConversation = async (
   conversationId: string,
   userId?: string
 ): Promise<void> => {
+  const activeUserId = (userId && userId !== "current_user") ? userId : auth.currentUser?.uid;
+  if (!activeUserId) return;
   const convRef = doc(db, "conversations", conversationId);
-  await deleteDoc(convRef);
-
-  if (userId) {
-    try {
-      const userRef = doc(db, "users", userId);
-      await updateDoc(userRef, {
-        deletedConversationIds: arrayUnion(conversationId),
-      });
-    } catch {
-      // Bỏ qua nếu user document chưa tồn tại hoặc offline
-    }
-  }
+  await setDoc(
+    convRef,
+    {
+      hiddenBy: arrayUnion(activeUserId),
+      [`deletedAt.${activeUserId}`]: serverTimestamp(),
+    },
+    { merge: true }
+  );
+  await clearCachedMessages(conversationId);
 };
 
 /**

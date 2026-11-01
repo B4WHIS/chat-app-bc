@@ -17,34 +17,48 @@ import { Avatar } from "../../components/Avatar";
 import { subscribeChatContacts } from "../../services/messageService";
 import { formatLastSeen, isUserCurrentlyOnline } from "../../services/presenceService";
 import { auth } from "../../config/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useTheme } from "../../context/ThemeContext";
 import { IUser } from "../../types";
 
 export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
+  const { colors, isDark } = useTheme();
   const [contacts, setContacts] = useState<IUser[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const currentUid = auth.currentUser?.uid;
-    if (!currentUid) {
-      setContacts([]);
-      setLoading(false);
-      return;
-    }
+    let unsubscribeContacts: (() => void) | null = null;
 
-    const unsubscribe = subscribeChatContacts(
-      currentUid,
-      (list) => {
-        setContacts(list);
-        setLoading(false);
-      },
-      (error) => {
-        console.warn("Lỗi subscribeChatContacts:", error);
-        setLoading(false);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeContacts) {
+        unsubscribeContacts();
+        unsubscribeContacts = null;
       }
-    );
 
-    return () => unsubscribe();
+      if (!user?.uid) {
+        setContacts([]);
+        setLoading(false);
+        return;
+      }
+
+      unsubscribeContacts = subscribeChatContacts(
+        user.uid,
+        (list) => {
+          setContacts(list);
+          setLoading(false);
+        },
+        (error) => {
+          console.warn("Lỗi subscribeChatContacts:", error);
+          setLoading(false);
+        }
+      );
+    });
+
+    return () => {
+      if (unsubscribeContacts) unsubscribeContacts();
+      unsubscribeAuth();
+    };
   }, []);
 
   const filtered = contacts.filter((c) => {
@@ -68,10 +82,13 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top"]}
+    >
       {/* Background Gradient */}
       <LinearGradient
-        colors={["#EAF5EE", "#F6FAF7", "#FFFFFF"]}
+        colors={colors.gradient}
         style={styles.gradientBg}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 0.25 }}
@@ -79,34 +96,45 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
 
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Danh bạ</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Danh bạ</Text>
         <TouchableOpacity
-          style={styles.addBtn}
+          style={[
+            styles.addBtn,
+            isDark && { backgroundColor: "#1F2937" },
+          ]}
           onPress={() => navigation?.navigate?.("Search")}
           activeOpacity={0.7}
         >
-          <Ionicons name="person-add-outline" size={20} color="#2D6A4F" />
+          <Ionicons name="person-add-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       {/* Search Input */}
-      <View style={styles.searchContainer}>
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: colors.inputBg,
+            borderColor: colors.inputBorder,
+          },
+        ]}
+      >
         <Ionicons
           name="search-outline"
           size={19}
-          color="#6B7280"
+          color={colors.subtext}
           style={styles.searchIcon}
         />
         <TextInput
           placeholder="Tìm trong danh bạ..."
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.subtext}
           value={search}
           onChangeText={setSearch}
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: colors.text }]}
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => setSearch("")}>
-            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            <Ionicons name="close-circle" size={18} color={colors.subtext} />
           </TouchableOpacity>
         )}
       </View>
@@ -120,7 +148,7 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
         ListHeaderComponent={
           filtered.length > 0 ? (
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
+              <Text style={[styles.sectionTitle, { color: colors.primary }]}>
                 Tất cả liên hệ ({filtered.length})
               </Text>
             </View>
@@ -137,7 +165,14 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => handleOpenChat(item)}
-                style={styles.contactCard}
+                style={[
+                  styles.contactCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                    shadowColor: isDark ? "#000000" : "#1B4332",
+                  },
+                ]}
               >
                 <View style={styles.avatarWrapper}>
                   <Avatar
@@ -149,12 +184,16 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
                 </View>
 
                 <View style={styles.infoWrapper}>
-                  <Text style={styles.contactName} numberOfLines={1}>
+                  <Text
+                    style={[styles.contactName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
                     {item.displayName || "Bạn bè"}
                   </Text>
                   <Text
                     style={[
                       styles.contactStatus,
+                      { color: colors.subtext },
                       isOnline && styles.onlineStatusText,
                     ]}
                     numberOfLines={1}
@@ -165,13 +204,16 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
 
                 <TouchableOpacity
                   onPress={() => handleOpenChat(item)}
-                  style={styles.chatIconBtn}
+                  style={[
+                    styles.chatIconBtn,
+                    isDark && { backgroundColor: "#1F2937" },
+                  ]}
                   activeOpacity={0.7}
                 >
                   <Ionicons
                     name="chatbubble-ellipses-outline"
                     size={20}
-                    color="#2D6A4F"
+                    color={colors.primary}
                   />
                 </TouchableOpacity>
               </TouchableOpacity>
@@ -181,20 +223,29 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2D6A4F" />
-              <Text style={styles.loadingText}>Đang tải danh bạ...</Text>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.subtext }]}>
+                Đang tải danh bạ...
+              </Text>
             </View>
           ) : contacts.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconCircle}>
-                <Ionicons name="people-outline" size={38} color="#2D6A4F" />
+              <View
+                style={[
+                  styles.emptyIconCircle,
+                  isDark && { backgroundColor: "#1F2937" },
+                ]}
+              >
+                <Ionicons name="people-outline" size={38} color={colors.primary} />
               </View>
-              <Text style={styles.emptyTitle}>Chưa có bạn bè nào</Text>
-              <Text style={styles.emptySubtitle}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                Chưa có bạn bè nào
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
                 Bạn chưa từng nhắn tin với ai. Hãy tìm kiếm người dùng mới để bắt đầu trò chuyện!
               </Text>
               <TouchableOpacity
-                style={styles.findFriendsBtn}
+                style={[styles.findFriendsBtn, { backgroundColor: colors.primary }]}
                 onPress={() => navigation?.navigate?.("Search")}
                 activeOpacity={0.8}
               >
@@ -209,11 +260,18 @@ export const PeopleScreen: React.FC<{ navigation?: any }> = ({ navigation }) => 
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconCircle}>
-                <Ionicons name="search-outline" size={38} color="#2D6A4F" />
+              <View
+                style={[
+                  styles.emptyIconCircle,
+                  isDark && { backgroundColor: "#1F2937" },
+                ]}
+              >
+                <Ionicons name="search-outline" size={38} color={colors.primary} />
               </View>
-              <Text style={styles.emptyTitle}>Không tìm thấy kết quả</Text>
-              <Text style={styles.emptySubtitle}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                Không tìm thấy kết quả
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
                 Không tìm thấy ai phù hợp với từ khóa "{search.trim()}".
               </Text>
             </View>

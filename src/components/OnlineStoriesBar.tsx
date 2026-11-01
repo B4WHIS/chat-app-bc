@@ -13,11 +13,9 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withRepeat,
-  withSequence,
-  withTiming,
 } from "react-native-reanimated";
 import { Avatar } from "./Avatar";
+import { useTheme } from "../context/ThemeContext";
 
 export interface IStoryUser {
   id: string;
@@ -41,6 +39,7 @@ const StoryItem: React.FC<{
   user: IStoryUser;
   onPress?: () => void;
 }> = ({ user, onPress }) => {
+  const { colors } = useTheme();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -74,7 +73,7 @@ const StoryItem: React.FC<{
             end={{ x: 1, y: 1 }}
             style={styles.storyGradientRing}
           >
-            <View style={styles.avatarInnerContainer}>
+            <View style={[styles.avatarInnerContainer, { backgroundColor: colors.card }]}>
               <Avatar uri={user.avatarUrl} name={user.name} size={54} />
             </View>
           </LinearGradient>
@@ -87,7 +86,7 @@ const StoryItem: React.FC<{
         {/* Online Indicator */}
         {user.isOnline && <View style={styles.onlineBadge} />}
       </View>
-      <Text style={styles.storyName} numberOfLines={1}>
+      <Text style={[styles.storyName, { color: colors.text }]} numberOfLines={1}>
         {user.name.split(" ").slice(-1)[0]}
       </Text>
     </AnimatedPressable>
@@ -100,6 +99,7 @@ export const OnlineStoriesBar: React.FC<OnlineStoriesBarProps> = ({
   onAddStoryPress,
   onStoryPress,
 }) => {
+  const { colors } = useTheme();
   const addScale = useSharedValue(1);
 
   const addAnimatedStyle = useAnimatedStyle(() => ({
@@ -131,12 +131,12 @@ export const OnlineStoriesBar: React.FC<OnlineStoriesBarProps> = ({
                 name={currentUser?.displayName || "Bạn"}
                 size={54}
               />
-              <View style={styles.addStoryBadge}>
+              <View style={[styles.addStoryBadge, { backgroundColor: colors.primary }]}>
                 <Ionicons name="add" size={14} color="#FFFFFF" />
               </View>
             </View>
           </View>
-          <Text style={styles.myStoryLabel} numberOfLines={1}>
+          <Text style={[styles.myStoryLabel, { color: colors.primary }]} numberOfLines={1}>
             Tin của bạn
           </Text>
         </AnimatedPressable>
@@ -233,3 +233,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+export default OnlineStoriesBar;

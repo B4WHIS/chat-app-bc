@@ -44,3 +44,18 @@ export const setCachedMessages = async (
     console.warn("Lỗi ghi cache tin nhắn AsyncStorage:", error);
   }
 };
+
+/**
+ * Xóa cache tin nhắn khi người dùng xóa cuộc trò chuyện
+ */
+export const clearCachedMessages = async (
+  conversationId: string
+): Promise<void> => {
+  if (!conversationId) return;
+
+  try {
+    await AsyncStorage.removeItem(`${CACHE_PREFIX}${conversationId}`);
+  } catch (error) {
+    console.warn("Lỗi xóa cache tin nhắn AsyncStorage:", error);
+  }
+};

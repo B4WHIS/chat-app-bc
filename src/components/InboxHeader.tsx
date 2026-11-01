@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
+import { useTheme } from "../context/ThemeContext";
 
 export type FilterType = "all" | "unread" | "groups" | "pinned";
 
@@ -32,6 +33,7 @@ const FilterChip: React.FC<{
   count?: number;
   onPress: () => void;
 }> = ({ label, isActive, count, onPress }) => {
+  const { colors, isDark } = useTheme();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -51,13 +53,23 @@ const FilterChip: React.FC<{
         }}
         style={[
           styles.chip,
-          isActive ? styles.activeChip : styles.inactiveChip,
+          isActive
+            ? [styles.activeChip, { backgroundColor: colors.primary }]
+            : [
+                styles.inactiveChip,
+                {
+                  backgroundColor: isDark ? "#1F2937" : "#FFFFFF",
+                  borderColor: colors.cardBorder,
+                },
+              ],
         ]}
       >
         <Text
           style={[
             styles.chipText,
-            isActive ? styles.activeChipText : styles.inactiveChipText,
+            isActive
+              ? styles.activeChipText
+              : [styles.inactiveChipText, { color: colors.subtext }],
           ]}
         >
           {label}
@@ -66,7 +78,9 @@ const FilterChip: React.FC<{
           <View
             style={[
               styles.chipBadge,
-              isActive ? styles.activeChipBadge : styles.inactiveChipBadge,
+              isActive
+                ? styles.activeChipBadge
+                : [styles.inactiveChipBadge, { backgroundColor: colors.primary }],
             ]}
           >
             <Text
@@ -95,37 +109,50 @@ export const InboxHeader: React.FC<InboxHeaderProps> = ({
   onComposePress,
   onProfilePress,
 }) => {
+  const { colors, isDark } = useTheme();
+
   return (
     <View style={styles.container}>
       {/* Top Title Bar */}
       <View style={styles.titleRow}>
-        <Text style={styles.headerTitle}>Đoạn chat</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Đoạn chat</Text>
 
         <View style={styles.actionIconsRow}>
           <TouchableOpacity
-            style={styles.circleActionBtn}
+            style={[
+              styles.circleActionBtn,
+              isDark && { backgroundColor: "#1F2937" },
+            ]}
             onPress={onComposePress}
             activeOpacity={0.7}
           >
-            <Ionicons name="create-outline" size={22} color="#2D6A4F" />
+            <Ionicons name="add" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Glassmorphic Search Bar */}
-      <View style={styles.searchContainer}>
+      {/* Search Bar */}
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: colors.inputBg,
+            borderColor: colors.inputBorder,
+          },
+        ]}
+      >
         <Ionicons
           name="search-outline"
           size={20}
-          color="#6B7280"
+          color={colors.subtext}
           style={styles.searchIcon}
         />
         <TextInput
           placeholder="Tìm tin nhắn, người liên hệ..."
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.subtext}
           value={searchQuery}
           onChangeText={onSearchChange}
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: colors.text }]}
           returnKeyType="search"
         />
         {searchQuery.length > 0 && (
@@ -133,7 +160,7 @@ export const InboxHeader: React.FC<InboxHeaderProps> = ({
             onPress={() => onSearchChange("")}
             style={styles.clearBtn}
           >
-            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            <Ionicons name="close-circle" size={18} color={colors.subtext} />
           </TouchableOpacity>
         )}
       </View>
@@ -286,3 +313,5 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
+
+export default InboxHeader;

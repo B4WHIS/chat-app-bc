@@ -2,9 +2,19 @@ import { AppState, AppStateStatus } from "react-native";
 import { doc, updateDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "../config/firebase";
 
+let currentShowOnlineStatus = true;
+
+/**
+ * Cập nhật cấu hình hiển thị trạng thái online trong bộ nhớ cục bộ
+ */
+export const setShowOnlineStatusPreference = (show: boolean) => {
+  currentShowOnlineStatus = show;
+};
+
 /**
  * Cập nhật trạng thái trực tuyến (isOnline) và thời điểm hoạt động cuối (lastSeen)
  * của người dùng vào Firestore collection 'users'.
+ * Tôn trọng cài đặt quyền riêng tư: nếu ẩn trạng thái (showOnlineStatus = false) thì luôn lưu isOnline = false.
  */
 export const setUserOnlineStatus = async (
   userId: string,
@@ -14,8 +24,9 @@ export const setUserOnlineStatus = async (
 
   try {
     const userDocRef = doc(db, "users", userId);
+    const effectiveOnline = currentShowOnlineStatus ? isOnline : false;
     await updateDoc(userDocRef, {
-      isOnline,
+      isOnline: effectiveOnline,
       lastSeen: serverTimestamp(),
     });
   } catch (error) {
@@ -27,12 +38,22 @@ export const setUserOnlineStatus = async (
  * Lắng nghe vòng đời ứng dụng (AppState) và tự động cập nhật
  * isOnline: true khi mở app (active), và isOnline: false khi ẩn/đóng app (background/inactive).
  * Có thêm nhịp tim (Heartbeat) định kỳ 60s để duy trì lastSeen khi người dùng vẫn đang mở app.
+ * Đồng thời lắng nghe cài đặt showOnlineStatus từ Firestore để áp dụng ngay tức thì.
  * 
  * @param userId ID của người dùng hiện tại
  * @returns Hàm unsubscribe để hủy lắng nghe và set offline khi logout/unmount
  */
 export const setupPresence = (userId: string): (() => void) => {
   if (!userId) return () => {};
+
+  // Lắng nghe cài đặt quyền riêng tư từ Firestore doc của user
+  const userDocRef = doc(db, "users", userId);
+  const unsubUserPref = onSnapshot(userDocRef, (snap) => {
+    if (snap.exists()) {
+      const show = snap.data()?.showOnlineStatus !== false;
+      currentShowOnlineStatus = show;
+    }
+  });
 
   // Ngay khi khởi động và user đã đăng nhập, đánh dấu online
   setUserOnlineStatus(userId, true);
@@ -82,6 +103,7 @@ export const setupPresence = (userId: string): (() => void) => {
   return () => {
     stopHeartbeat();
     subscription.remove();
+    unsubUserPref();
     setUserOnlineStatus(userId, false);
   };
 };
@@ -89,6 +111,7 @@ export const setupPresence = (userId: string): (() => void) => {
 /**
  * Lắng nghe thời gian thực trạng thái trực tuyến của 1 user cụ thể
  * Phục vụ hiển thị chấm xanh "Online" / "Hoạt động ... trước" trên ChatHeader
+ * Nếu đối phương ẩn trạng thái (showOnlineStatus = false), luôn trả về isOnline = false
  * 
  * @param targetUserId ID người cần theo dõi trạng thái
  * @param onUpdate Callback trả về { isOnline, lastSeen }
@@ -107,9 +130,10 @@ export const subscribeUserPresence = (
     (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        const canShow = data?.showOnlineStatus !== false;
         onUpdate({
-          isOnline: isUserCurrentlyOnline(data?.isOnline, data?.lastSeen),
-          lastSeen: data?.lastSeen,
+          isOnline: canShow ? isUserCurrentlyOnline(data?.isOnline, data?.lastSeen) : false,
+          lastSeen: canShow ? data?.lastSeen : null,
         });
       } else {
         onUpdate({ isOnline: false });

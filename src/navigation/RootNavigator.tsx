@@ -10,6 +10,8 @@ import { auth } from "../config/firebase";
 import {
   NavigationContainer,
   createNavigationContainerRef,
+  DefaultTheme,
+  DarkTheme,
 } from "@react-navigation/native";
 import * as Notifications from "expo-notifications";
 import AuthNavigator from "./AuthNavigator";
@@ -19,11 +21,13 @@ import {
   registerForPushNotificationsAsync,
   updateUserPushToken,
 } from "../services/notificationService";
+import { useTheme } from "../context/ThemeContext";
 import { MainStackParamList } from "../types";
 
 export const navigationRef = createNavigationContainerRef<MainStackParamList>();
 
 const RootNavigator = () => {
+  const { isDark, colors } = useTheme();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const pendingNotificationRef = useRef<Record<string, unknown> | null>(null);
@@ -121,14 +125,24 @@ const RootNavigator = () => {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#2D6A4F" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={isDark ? DarkTheme : DefaultTheme}
+    >
       {user ? <MainNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );

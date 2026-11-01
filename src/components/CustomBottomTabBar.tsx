@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
+import { useTheme } from "../context/ThemeContext";
 
 interface TabItemConfig {
   name: string;
@@ -114,9 +115,20 @@ const TabButton: React.FC<{
 export const CustomBottomTabBar: React.FC<
   BottomTabBarProps & { unreadCount?: number }
 > = ({ state, descriptors, navigation, unreadCount = 0 }) => {
+  const { isDark } = useTheme();
+
   return (
     <View style={styles.container}>
-      <View style={styles.floatingBar}>
+      <View
+        style={[
+          styles.floatingBar,
+          isDark && {
+            backgroundColor: "rgba(31, 41, 55, 0.95)",
+            borderColor: "rgba(255, 255, 255, 0.12)",
+            shadowColor: "#000000",
+          },
+        ]}
+      >
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;

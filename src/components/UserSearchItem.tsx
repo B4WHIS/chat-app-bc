@@ -13,6 +13,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { Avatar } from "./Avatar";
+import { useTheme } from "../context/ThemeContext";
 import { IUser } from "../types";
 
 interface UserSearchItemProps {
@@ -25,6 +26,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export const UserSearchItem: React.FC<UserSearchItemProps> = React.memo(
   ({ user, onViewProfile, onStartChat }) => {
+    const { colors, isDark } = useTheme();
     const cardScale = useSharedValue(1);
     const btnScale = useSharedValue(1);
 
@@ -38,7 +40,16 @@ export const UserSearchItem: React.FC<UserSearchItemProps> = React.memo(
 
     return (
       <Animated.View style={[styles.wrapper, animatedCardStyle]}>
-        <View style={styles.cardContainer}>
+        <View
+          style={[
+            styles.cardContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              shadowColor: isDark ? "#000000" : "#1B4332",
+            },
+          ]}
+        >
           {/* Khu vực 1: Avatar + Tên + Email (Chạm để xem thông tin cá nhân) */}
           <Pressable
             style={styles.profileClickArea}
@@ -61,17 +72,23 @@ export const UserSearchItem: React.FC<UserSearchItemProps> = React.memo(
 
             <View style={styles.infoContainer}>
               <View style={styles.nameRow}>
-                <Text style={styles.nameText} numberOfLines={1}>
+                <Text
+                  style={[styles.nameText, { color: colors.text }]}
+                  numberOfLines={1}
+                >
                   {user.displayName || user.email.split("@")[0]}
                 </Text>
                 <Ionicons
                   name="chevron-forward"
                   size={14}
-                  color="#9CA3AF"
+                  color={colors.subtext}
                   style={styles.chevronIcon}
                 />
               </View>
-              <Text style={styles.emailText} numberOfLines={1}>
+              <Text
+                style={[styles.emailText, { color: colors.subtext }]}
+                numberOfLines={1}
+              >
                 {user.email}
               </Text>
             </View>
@@ -88,7 +105,7 @@ export const UserSearchItem: React.FC<UserSearchItemProps> = React.memo(
               onPressOut={() => {
                 btnScale.value = withSpring(1, { damping: 14 });
               }}
-              style={styles.chatActionBtn}
+              style={[styles.chatActionBtn, { backgroundColor: colors.primary }]}
             >
               <Ionicons
                 name="chatbubble-ellipses-outline"
@@ -187,3 +204,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
+export default UserSearchItem;

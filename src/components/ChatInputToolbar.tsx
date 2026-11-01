@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AppButton from "./AppButton";
+import { useTheme } from "../context/ThemeContext";
 
 export interface ChatInputToolbarProps {
   value?: string;
@@ -26,6 +27,7 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
   placeholder = "Nhập tin nhắn...",
   disabled = false,
 }) => {
+  const { colors, isDark } = useTheme();
   const [internalText, setInternalText] = useState<string>("");
 
   const isControlled = value !== undefined;
@@ -52,7 +54,7 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
   const canSend = currentText.trim().length > 0 && !disabled;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
       {/* Nút chọn ảnh */}
       <TouchableOpacity
         style={styles.actionButton}
@@ -61,15 +63,15 @@ export const ChatInputToolbar: React.FC<ChatInputToolbarProps> = ({
         activeOpacity={0.7}
         accessibilityLabel="Chọn ảnh"
       >
-        <Ionicons name="images-outline" size={24} color="#2D6A4F" />
+        <Ionicons name="images-outline" size={24} color={colors.primary} />
       </TouchableOpacity>
 
       {/* Ô nhập tin nhắn */}
-      <View style={styles.inputWrapper}>
+      <View style={[styles.inputWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, { color: colors.text }]}
           placeholder={placeholder}
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.subtext}
           value={currentText}
           onChangeText={handleTextChange}
           multiline

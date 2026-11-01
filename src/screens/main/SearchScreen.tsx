@@ -20,20 +20,21 @@ import Animated, { FadeInDown, FadeIn, FadeOut } from "react-native-reanimated";
 import { UserSearchItem } from "../../components/UserSearchItem";
 import { SearchSkeletonList } from "../../components/SearchSkeleton";
 import { Avatar } from "../../components/Avatar";
-import { searchUsers, getSuggestedUsers } from "../../services/userService";
+import { searchUsers } from "../../services/userService";
 import { generateConversationId } from "../../services/conversationService";
 import { auth } from "../../config/firebase";
 import { IUser } from "../../types";
+import { useTheme } from "../../context/ThemeContext";
 
 interface SearchScreenProps {
   navigation: any;
 }
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
+  const { colors, isDark } = useTheme();
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<IUser[]>([]);
-  const [suggestedUsers, setSuggestedUsers] = useState<IUser[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   // Profile Modal State
@@ -43,16 +44,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
   const searchInputRef = useRef<TextInputInstance>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load suggested users on mount
-  useEffect(() => {
-    let isMounted = true;
-    getSuggestedUsers().then((users) => {
-      if (isMounted) setSuggestedUsers(users);
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+
 
   // Debounce search handler
   const handleSearchChange = (text: string) => {
@@ -139,10 +131,10 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
       {/* Botanical Header Background */}
       <LinearGradient
-        colors={["#EAF5EE", "#F6FAF7", "#FFFFFF"]}
+        colors={colors.gradient}
         style={styles.gradientBg}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 0.25 }}
@@ -152,13 +144,13 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backBtn}
+          style={[styles.backBtn, isDark && { backgroundColor: "#1F2937" }]}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={24} color="#1F2937" />
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
-        <View style={styles.searchInputContainer}>
+        <View style={[styles.searchInputContainer, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
           <Ionicons
             name="search-outline"
             size={19}
@@ -171,7 +163,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
             placeholderTextColor="#9CA3AF"
             value={searchTerm}
             onChangeText={handleSearchChange}
-            style={styles.textInput}
+            style={[styles.textInput, { color: colors.text }]}
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
@@ -191,7 +183,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
       {/* Content Area */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <Text style={styles.sectionTitle}>Đang tìm kiếm...</Text>
+          <Text style={[styles.sectionTitle, { color: colors.primary }]}>Đang tìm kiếm...</Text>
           <SearchSkeletonList count={4} />
         </View>
       ) : searchTerm.trim().length > 0 ? (
@@ -202,7 +194,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <Text style={styles.sectionTitle}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
               Kết quả tìm kiếm ({searchResults.length})
             </Text>
           }
@@ -219,11 +211,11 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
           )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconCircle}>
+              <View style={[styles.emptyIconCircle, isDark && { backgroundColor: "#1F2937" }]}>
                 <Ionicons name="person-outline" size={38} color="#2D6A4F" />
               </View>
-              <Text style={styles.emptyTitle}>Không tìm thấy người dùng</Text>
-              <Text style={styles.emptySubtitle}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Không tìm thấy người dùng</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
                 Không có ai khớp với từ khóa "{searchTerm}". Vui lòng thử tìm
                 kiếm bằng địa chỉ email đầy đủ.
               </Text>
@@ -231,73 +223,55 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
           }
         />
       ) : (
-        /* Default View: Recent Searches + Suggested Friends */
-        <FlatList
-          data={suggestedUsers}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            <View>
-              {/* Recent Searches */}
-              {recentSearches.length > 0 && (
-                <View style={styles.recentSection}>
-                  <View style={styles.recentHeaderRow}>
-                    <Text style={styles.sectionTitle}>Tìm kiếm gần đây</Text>
-                    <TouchableOpacity onPress={handleClearAllRecent}>
-                      <Text style={styles.clearAllText}>Xóa tất cả</Text>
+        /* Default View: Recent Searches + Empty State Guidance */
+        <View style={styles.listContent}>
+          {recentSearches.length > 0 && (
+            <View style={styles.recentSection}>
+              <View style={styles.recentHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: colors.primary }]}>Tìm kiếm gần đây</Text>
+                <TouchableOpacity onPress={handleClearAllRecent}>
+                  <Text style={styles.clearAllText}>Xóa tất cả</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.recentChipsContainer}>
+                {recentSearches.map((term) => (
+                  <View key={term} style={[styles.recentChip, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                    <TouchableOpacity
+                      onPress={() => handleSelectRecentTerm(term)}
+                      style={styles.chipTextContainer}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={14}
+                        color="#2D6A4F"
+                      />
+                      <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
+                        {term}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveRecentSearch(term)}
+                      style={styles.chipRemoveBtn}
+                    >
+                      <Ionicons name="close" size={14} color="#6B7280" />
                     </TouchableOpacity>
                   </View>
-
-                  <View style={styles.recentChipsContainer}>
-                    {recentSearches.map((term) => (
-                      <View key={term} style={styles.recentChip}>
-                        <TouchableOpacity
-                          onPress={() => handleSelectRecentTerm(term)}
-                          style={styles.chipTextContainer}
-                        >
-                          <Ionicons
-                            name="time-outline"
-                            size={14}
-                            color="#2D6A4F"
-                          />
-                          <Text style={styles.chipText} numberOfLines={1}>
-                            {term}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleRemoveRecentSearch(term)}
-                          style={styles.chipRemoveBtn}
-                        >
-                          <Ionicons name="close" size={14} color="#6B7280" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Suggested Friends Section Header */}
-              <View style={styles.suggestedHeaderRow}>
-                <Text style={styles.sectionTitle}>Gợi ý kết nối</Text>
-                <Text style={styles.suggestedSubtitle}>
-                  Bạn bè gần đây & Thành viên mới
-                </Text>
+                ))}
               </View>
             </View>
-          }
-          renderItem={({ item, index }) => (
-            <Animated.View
-              entering={FadeInDown.delay(index * 50).duration(300)}
-            >
-              <UserSearchItem
-                user={item}
-                onViewProfile={handleViewProfile}
-                onStartChat={handleStartChat}
-              />
-            </Animated.View>
           )}
-        />
+
+          <View style={styles.emptyContainer}>
+            <View style={[styles.emptyIconCircle, isDark && { backgroundColor: "#1F2937" }]}>
+              <Ionicons name="search-outline" size={38} color="#2D6A4F" />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Tìm kiếm bạn bè</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
+              Nhập email hoặc tên người dùng vào thanh tìm kiếm phía trên để bắt đầu kết nối.
+            </Text>
+          </View>
+        </View>
       )}
 
       {/* User Profile Modal */}
@@ -312,7 +286,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
           onPress={() => setModalVisible(false)}
         >
           <Pressable
-            style={styles.modalCard}
+            style={[styles.modalCard, { backgroundColor: colors.modalBg }]}
             onPress={(e) => e.stopPropagation()}
           >
             {/* Close button */}
@@ -336,15 +310,15 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
             </View>
 
             {/* Name & Email */}
-            <Text style={styles.modalNameText}>
+            <Text style={[styles.modalNameText, { color: colors.text }]}>
               {selectedUser?.displayName ||
                 selectedUser?.email?.split("@")[0] ||
                 ""}
             </Text>
-            <Text style={styles.modalEmailText}>{selectedUser?.email}</Text>
+            <Text style={[styles.modalEmailText, { color: colors.subtext }]}>{selectedUser?.email}</Text>
 
             {/* Status indicator */}
-            <View style={styles.statusPill}>
+            <View style={[styles.statusPill, { backgroundColor: isDark ? "#283548" : "#F3F7F4" }]}>
               <View
                 style={[
                   styles.statusDot,
@@ -355,7 +329,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
                   },
                 ]}
               />
-              <Text style={styles.statusText}>
+              <Text style={[styles.statusText, { color: colors.subtext }]}>
                 {selectedUser?.isOnline
                   ? "Đang trực tuyến"
                   : "Ngoại tuyến"}

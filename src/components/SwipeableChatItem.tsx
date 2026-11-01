@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { Avatar } from "./Avatar";
+import { useTheme } from "../context/ThemeContext";
 import { IConversation } from "../types";
 
 export interface ExtendedConversation extends IConversation {
@@ -47,6 +48,7 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
     onMute,
     onDelete,
   }) => {
+    const { colors, isDark } = useTheme();
     const scale = useSharedValue(1);
     const swipeableRef = React.useRef<SwipeableMethods | null>(null);
 
@@ -194,7 +196,12 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
             }}
             style={[
               styles.cardContainer,
-              conversation.isPinned && styles.pinnedCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+                shadowColor: isDark ? "#000000" : "#1B4332",
+              },
+              conversation.isPinned && (isDark ? styles.pinnedCardDark : styles.pinnedCard),
               animatedCardStyle,
             ]}
           >
@@ -206,7 +213,6 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
                 size={52}
                 isOnline={conversation.isOnline}
               />
-
             </View>
 
             {/* Content Details */}
@@ -214,7 +220,11 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
               <View style={styles.headerRow}>
                 <View style={styles.titleWithBadge}>
                   <Text
-                    style={[styles.nameText, hasUnread && styles.unreadNameText]}
+                    style={[
+                      styles.nameText,
+                      { color: colors.text },
+                      hasUnread && [styles.unreadNameText, isDark && { color: "#FFFFFF" }],
+                    ]}
                     numberOfLines={1}
                   >
                     {displayName}
@@ -223,7 +233,7 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
                     <Ionicons
                       name="pin"
                       size={13}
-                      color="#2D6A4F"
+                      color={colors.primary}
                       style={styles.pinIcon}
                     />
                   )}
@@ -239,7 +249,8 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
                 <Text
                   style={[
                     styles.timeText,
-                    hasUnread && styles.unreadTimeText,
+                    { color: colors.subtext },
+                    hasUnread && [styles.unreadTimeText, { color: colors.primary }],
                   ]}
                 >
                   {formattedTime}
@@ -251,7 +262,8 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
                 <Text
                   style={[
                     styles.messageText,
-                    hasUnread && styles.unreadMessageText,
+                    { color: colors.subtext },
+                    hasUnread && [styles.unreadMessageText, { color: colors.text }],
                   ]}
                   numberOfLines={1}
                 >
@@ -261,7 +273,7 @@ export const SwipeableChatItem: React.FC<SwipeableChatItemProps> = React.memo(
 
                 {/* Unread badge */}
                 {hasUnread && (
-                  <View style={styles.unreadBadge}>
+                  <View style={[styles.unreadBadge, { backgroundColor: colors.primary }]}>
                     <Text style={styles.unreadCountText}>
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </Text>
@@ -292,8 +304,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "rgba(45, 106, 79, 0.07)",
-    // Subtle luxury shadow
-    shadowColor: "#1B4332",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -303,19 +313,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#F7FAF7",
     borderColor: "rgba(45, 106, 79, 0.16)",
   },
+  pinnedCardDark: {
+    backgroundColor: "#162820",
+    borderColor: "rgba(82, 183, 136, 0.25)",
+  },
   avatarWrapper: {
     position: "relative",
-  },
-  onlineDot: {
-    position: "absolute",
-    bottom: 1,
-    right: 1,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
-    backgroundColor: "#10B981",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
   },
   contentContainer: {
     flex: 1,
@@ -417,3 +420,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+export default SwipeableChatItem;
